@@ -50,7 +50,7 @@ export async function chat(options: {
       "Lovable-API-Key": apiKey,
       "X-Lovable-AIG-SDK": "fetch",
     },
-    signal: options.signal,
+    ...(options.signal ? { signal: options.signal } : {}),
     body: JSON.stringify({
       model: options.model,
       messages: options.messages,

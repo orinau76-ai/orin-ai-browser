@@ -31,8 +31,8 @@ async function call<T>(path: string, body: unknown): Promise<T> {
 export type SearchHit = {
   url: string;
   title: string;
-  description?: string;
-  markdown?: string;
+  description?: string | undefined;
+  markdown?: string | undefined;
 };
 
 type SearchResponse = {

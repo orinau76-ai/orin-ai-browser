@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,15 +15,19 @@ import {
   Home,
   Laptop,
   Layers,
-  Mic,
+  Loader2,
+  LogOut,
   Plus,
   RotateCw,
   Scale,
   Search,
   Settings,
+  Shield,
+  ShieldCheck,
   Sparkles,
   Square,
   Star,
+  Trash2,
   Newspaper,
   Youtube,
   MessageCircle,
@@ -32,24 +37,35 @@ import {
   X,
   Cloud,
   Apple,
+  Bot,
 } from "lucide-react";
 import heroRibbon from "@/assets/hero-ribbon.jpg";
 import weatherBg from "@/assets/weather-bg.jpg";
+import { useAuth } from "@/hooks/useAuth";
+import { OrinMarkdown } from "@/components/orin-markdown";
+import {
+  askOrin,
+  deleteSession,
+  getSession,
+  getSettings,
+  listSessions,
+  setPrivateMode as setPrivateModeFn,
+} from "@/lib/orin.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Orin — AI Browser Home" },
+      { title: "Orin — AI Browser with Research Agents" },
       {
         name: "description",
         content:
-          "Orin is an AI-powered browser that researches, summarizes, compares and extracts across the web from one calm workspace.",
+          "Orin is an AI-powered browser that searches, researches, summarizes, compares and extracts across the live web, with autonomous agent mode and private no-log browsing.",
       },
-      { property: "og:title", content: "Orin — AI Browser Home" },
+      { property: "og:title", content: "Orin — AI Browser with Research Agents" },
       {
         property: "og:description",
         content:
-          "Research, summarize, compare and extract anything on the web with Orin's agent mode.",
+          "Search, research, summarize, compare and automate across the live web with Orin's AI agent mode and private mode.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -60,63 +76,163 @@ export const Route = createFileRoute("/")({
 
 const sideIcons = [Home, Star, Layers, Clock, History, FileText];
 
-const actions = [
-  { title: "Research", sub: "Deep research on any topic", icon: Search, tint: "from-primary to-primary-glow" },
-  { title: "Summarize", sub: "Summarize any webpage", icon: FileText, tint: "from-sky-400 to-sky-300" },
-  { title: "Compare", sub: "Compare products, prices, etc.", icon: Scale, tint: "from-amber-400 to-amber-300" },
-  { title: "Extract", sub: "Extract data from pages", icon: Database, tint: "from-violet-400 to-violet-300" },
-  { title: "Explain", sub: "Explain any content", icon: Sparkles, tint: "from-fuchsia-400 to-fuchsia-300" },
+type Mode = "search" | "research" | "summarize" | "compare" | "extract" | "explain" | "agent";
+
+const actions: { title: string; sub: string; icon: typeof Search; tint: string; mode: Mode }[] = [
+  { title: "Research", sub: "Deep research on any topic", icon: Search, tint: "from-primary to-primary-glow", mode: "research" },
+  { title: "Summarize", sub: "Paste a URL to summarize", icon: FileText, tint: "from-sky-400 to-sky-300", mode: "summarize" },
+  { title: "Compare", sub: "Compare products, prices, etc.", icon: Scale, tint: "from-amber-400 to-amber-300", mode: "compare" },
+  { title: "Extract", sub: "Extract data from pages", icon: Database, tint: "from-violet-400 to-violet-300", mode: "extract" },
+  { title: "Explain", sub: "Explain any content", icon: Sparkles, tint: "from-fuchsia-400 to-fuchsia-300", mode: "explain" },
+  { title: "Agent Mode", sub: "Multi-step autonomous tasks", icon: Bot, tint: "from-emerald-400 to-emerald-300", mode: "agent" },
 ];
 
-const chips = [
-  { label: "AI Research", icon: Compass },
-  { label: "Top Stories", icon: Newspaper },
-  { label: "YouTube", icon: Youtube },
-  { label: "Reddit", icon: MessageCircle },
-  { label: "X (Twitter)", icon: X },
-  { label: "Academics", icon: BookOpen },
+const chips: { label: string; icon: typeof Compass; prompt: string; mode: Mode }[] = [
+  { label: "AI Research", icon: Compass, prompt: "Deep research the most important AI breakthroughs this month", mode: "research" },
+  { label: "Top Stories", icon: Newspaper, prompt: "What are today's top world news stories?", mode: "search" },
+  { label: "YouTube", icon: Youtube, prompt: "Find the best YouTube videos published this week about AI agents", mode: "search" },
+  { label: "Reddit", icon: MessageCircle, prompt: "What is Reddit saying right now about AI browsers?", mode: "research" },
+  { label: "X (Twitter)", icon: X, prompt: "Summarize what's trending on X about AI today", mode: "search" },
+  { label: "Academics", icon: BookOpen, prompt: "Find recent peer-reviewed papers on autonomous web agents", mode: "research" },
 ];
 
 const features = [
-  {
-    title: "AI Research Assistant",
-    sub: "Deep research with real-time results",
-    tint: "from-primary/70 to-primary-glow/40",
-    icon: Square,
-  },
-  {
-    title: "Smart Summarizer",
-    sub: "Summarize long articles instantly",
-    tint: "from-sky-400/70 to-sky-200/40",
-    icon: FileText,
-  },
-  {
-    title: "Compare Anything",
-    sub: "Compare products, prices, and more",
-    tint: "from-violet-400/70 to-violet-200/40",
-    icon: Scale,
-  },
+  { title: "AI Research Assistant", sub: "Deep research with real-time results", tint: "from-primary/70 to-primary-glow/40", icon: Square },
+  { title: "Smart Summarizer", sub: "Summarize long articles instantly", tint: "from-sky-400/70 to-sky-200/40", icon: FileText },
+  { title: "Compare Anything", sub: "Compare products, prices, and more", tint: "from-violet-400/70 to-violet-200/40", icon: Scale },
 ];
 
-const sessions = [
-  { title: "Best Pharm.D Universities in India", meta: "Research • 2 minutes ago", icon: GraduationCap },
-  { title: "RTX 5070 Laptops Under ₹1 Lakh", meta: "Comparison • 1 hour ago", icon: Laptop },
-  { title: "Apple Event 2025 Summary", meta: "Summary • 3 hours ago", icon: Apple },
+const fallbackSessions = [
+  { title: "Best Pharm.D Universities in India", meta: "Research • sample", icon: GraduationCap },
+  { title: "RTX 5070 Laptops Under ₹1 Lakh", meta: "Comparison • sample", icon: Laptop },
+  { title: "Apple Event 2025 Summary", meta: "Summary • sample", icon: Apple },
 ];
 
 const suggestions = [
-  { title: "Latest AI Tools in 2025", meta: "Trending now", icon: Sparkles },
-  { title: "Top Colleges Accepting Pharmacy Graduates", meta: "Recommended", icon: GraduationCap },
-  { title: "Car Photography Tips", meta: "For you", icon: Camera },
+  { title: "Latest AI Tools in 2026", meta: "Trending now", icon: Sparkles, mode: "research" as Mode },
+  { title: "Top Colleges Accepting Pharmacy Graduates", meta: "Recommended", icon: GraduationCap, mode: "research" as Mode },
+  { title: "Car Photography Tips", meta: "For you", icon: Camera, mode: "explain" as Mode },
 ];
 
 const tabs = [
-  { label: "Orin Research", active: false },
-  { label: "AI News", active: false },
-  { label: "Product Hunt", active: false },
+  { label: "Orin Research" },
+  { label: "AI News" },
+  { label: "Product Hunt" },
 ];
 
+type Source = { url: string; title: string };
+type Step = { tool: string; detail: string };
+type Turn = { role: string; content: string; sources?: Source[]; steps?: Step[] };
+type SessionRow = { id: string; title: string; mode: string; updated_at: string };
+
+function relative(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
+
 function Index() {
+  const { user, loading: authLoading, signOut } = useAuth();
+  const [mode, setMode] = useState<Mode>("research");
+  const [input, setInput] = useState("");
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [privateMode, setPrivate] = useState(false);
+  const resultRef = useRef<HTMLDivElement>(null);
+
+  const refreshSessions = useCallback(async () => {
+    if (!user) return;
+    try {
+      setSessions((await listSessions()) as SessionRow[]);
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setSessions([]);
+      return;
+    }
+    void refreshSessions();
+    void getSettings()
+      .then((s) => setPrivate(s.privateMode))
+      .catch(() => {});
+  }, [user, refreshSessions]);
+
+  const run = useCallback(
+    async (prompt: string, runMode: Mode) => {
+      if (!prompt.trim() || busy) return;
+      if (!user) {
+        setError("Sign in to run Orin.");
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      setMode(runMode);
+      setTurns((prev) => [...prev, { role: "user", content: prompt }]);
+      setInput("");
+      requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }));
+      try {
+        const result = await askOrin({
+          data: { prompt, mode: runMode, sessionId },
+        });
+        setSessionId(result.sessionId);
+        setTurns((prev) => [
+          ...prev,
+          { role: "assistant", content: result.answer, sources: result.sources, steps: result.steps },
+        ]);
+        void refreshSessions();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Orin could not complete that.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, sessionId, user, refreshSessions],
+  );
+
+  async function openSession(id: string) {
+    setSessionId(id);
+    setError(null);
+    try {
+      const rows = await getSession({ data: { sessionId: id } });
+      setTurns(rows as Turn[]);
+      requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }));
+    } catch {
+      setError("Could not open that session.");
+    }
+  }
+
+  async function removeSession(id: string) {
+    await deleteSession({ data: { sessionId: id } });
+    if (id === sessionId) {
+      setSessionId(null);
+      setTurns([]);
+    }
+    void refreshSessions();
+  }
+
+  async function togglePrivate() {
+    const next = !privateMode;
+    setPrivate(next);
+    try {
+      await setPrivateModeFn({ data: { privateMode: next } });
+      if (next) void refreshSessions();
+    } catch {
+      setPrivate(!next);
+    }
+  }
+
+  const active = turns.length > 0;
+
   return (
     <div className="min-h-screen p-4 sm:p-8">
       <div className="glass mx-auto max-w-[1500px] overflow-hidden rounded-3xl">
@@ -134,25 +250,64 @@ function Index() {
             <button className="rounded-full p-1.5 hover:bg-secondary" aria-label="Forward">
               <ArrowRight className="size-4" />
             </button>
-            <button className="rounded-full p-1.5 hover:bg-secondary" aria-label="Reload">
+            <button
+              className="rounded-full p-1.5 hover:bg-secondary"
+              aria-label="Reload"
+              onClick={() => {
+                setTurns([]);
+                setSessionId(null);
+              }}
+            >
               <RotateCw className="size-4" />
             </button>
           </div>
-          <div className="glass-soft mx-auto flex w-full max-w-2xl items-center gap-3 rounded-full px-4 py-2.5">
+          <form
+            className="glass-soft mx-auto flex w-full max-w-2xl items-center gap-3 rounded-full px-4 py-2.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(input, mode);
+            }}
+          >
             <Search className="size-4 text-muted-foreground" />
             <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              placeholder="Search or enter a URL"
+              placeholder="Search, enter a URL, or ask Orin"
             />
             <Sparkles className="size-4 text-primary" />
-          </div>
+          </form>
           <div className="ml-auto flex items-center gap-2 text-muted-foreground">
+            <button
+              onClick={() => void togglePrivate()}
+              disabled={!user}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                privateMode ? "bg-emerald-400/25 text-emerald-700" : "bg-white/60"
+              } disabled:opacity-50`}
+              title="Private Mode: requests are proxied server-side and nothing is saved"
+            >
+              {privateMode ? <ShieldCheck className="size-4" /> : <Shield className="size-4" />}
+              {privateMode ? "Private On" : "Private Off"}
+            </button>
             <button className="rounded-full p-2 hover:bg-secondary" aria-label="Bookmarks">
               <Star className="size-4" />
             </button>
-            <button className="rounded-full p-2 hover:bg-secondary" aria-label="Split view">
-              <Layers className="size-4" />
-            </button>
+            {user ? (
+              <button
+                onClick={() => void signOut()}
+                className="rounded-full p-2 hover:bg-secondary"
+                aria-label="Sign out"
+              >
+                <LogOut className="size-4" />
+              </button>
+            ) : (
+              <Link
+                to="/auth"
+                className="rounded-full bg-gradient-to-br from-primary to-primary-glow px-4 py-1.5 text-xs font-semibold text-primary-foreground"
+              >
+                Sign in
+              </Link>
+            )}
             <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground">
               <Sparkles className="size-4" />
             </span>
@@ -200,7 +355,14 @@ function Index() {
             <button className="mt-auto grid size-10 place-items-center rounded-2xl text-muted-foreground hover:bg-white/50" aria-label="Settings">
               <Settings className="size-4" />
             </button>
-            <button className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary/20 to-primary-glow/30 text-primary" aria-label="Add">
+            <button
+              onClick={() => {
+                setTurns([]);
+                setSessionId(null);
+              }}
+              className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary/20 to-primary-glow/30 text-primary"
+              aria-label="New session"
+            >
               <Plus className="size-4" />
             </button>
           </nav>
@@ -215,29 +377,44 @@ function Index() {
                 <h2 className="text-xl font-bold tracking-tight">ORIN</h2>
                 <p className="text-[10px] tracking-[0.2em] text-muted-foreground">AI BROWSER</p>
               </div>
-              <button className="ml-auto grid size-8 place-items-center rounded-full bg-white/70 text-muted-foreground" aria-label="Info">
+              <button className="ml-auto grid size-8 place-items-center rounded-full bg-white/70 text-muted-foreground" aria-label="History">
                 <Clock className="size-4" />
               </button>
             </div>
 
             <div>
-              <h1 className="text-lg font-semibold">Good Morning, Tawseef 👋</h1>
-              <p className="text-sm text-muted-foreground">How can I help you today?</p>
+              <h1 className="text-lg font-semibold">
+                Hello{user?.email ? `, ${user.email.split("@")[0]}` : ""} 👋
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {authLoading ? "Waking up…" : user ? "How can I help you today?" : "Sign in to start working."}
+              </p>
             </div>
 
-            <button className="flex items-start gap-3 rounded-2xl bg-gradient-to-br from-primary/12 to-primary-glow/10 p-4 text-left">
+            <button
+              onClick={() => setMode("agent")}
+              className="flex items-start gap-3 rounded-2xl bg-gradient-to-br from-primary/12 to-primary-glow/10 p-4 text-left"
+            >
               <div>
-                <p className="text-sm font-semibold">🧠 Orin is in Agent Mode</p>
+                <p className="text-sm font-semibold">
+                  🧠 {mode === "agent" ? "Agent Mode is active" : "Switch Orin to Agent Mode"}
+                </p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  I can browse, research, compare and complete tasks for you.
+                  I browse, research, compare and complete multi-step tasks for you.
                 </p>
               </div>
               <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" />
             </button>
 
             <div className="divide-y divide-border overflow-hidden rounded-2xl bg-white/60">
-              {actions.map(({ title, sub, icon: Icon, tint }) => (
-                <button key={title} className="flex w-full items-center gap-3 p-3.5 text-left hover:bg-white/70">
+              {actions.map(({ title, sub, icon: Icon, tint, mode: m }) => (
+                <button
+                  key={title}
+                  onClick={() => setMode(m)}
+                  className={`flex w-full items-center gap-3 p-3.5 text-left hover:bg-white/70 ${
+                    mode === m ? "bg-white/80" : ""
+                  }`}
+                >
                   <div>
                     <p className="text-sm font-semibold">{title}</p>
                     <p className="text-xs text-muted-foreground">{sub}</p>
@@ -249,20 +426,33 @@ function Index() {
               ))}
             </div>
 
-            <div className="mt-auto rounded-2xl bg-white/60 p-4">
+            <form
+              className="mt-auto rounded-2xl bg-white/60 p-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(input, mode);
+              }}
+            >
               <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                placeholder="Ask Orin anything..."
+                placeholder={`Ask Orin to ${mode}…`}
               />
               <div className="mt-6 flex items-center justify-end gap-3">
-                <button className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)]" aria-label="Voice input">
-                  <Mic className="size-4" />
-                </button>
-                <button className="grid size-10 place-items-center rounded-full bg-white/80 text-foreground" aria-label="Send">
-                  <ArrowRight className="size-4" />
+                <span className="mr-auto rounded-full bg-white/70 px-3 py-1 text-[11px] font-medium capitalize text-muted-foreground">
+                  {mode}
+                </span>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
+                  aria-label="Send"
+                >
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
                 </button>
               </div>
-            </div>
+            </form>
           </aside>
 
           {/* Main */}
@@ -281,20 +471,34 @@ function Index() {
                   <br />
                   <span className="text-gradient">Orin</span> finds the way.
                 </h2>
-                <div className="glass mt-8 flex items-center gap-3 rounded-full py-2.5 pl-5 pr-2.5">
+                <form
+                  className="glass mt-8 flex items-center gap-3 rounded-full py-2.5 pl-5 pr-2.5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void run(input, mode);
+                  }}
+                >
                   <Search className="size-4 text-muted-foreground" />
                   <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
                     className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                     placeholder="Ask Orin to search, research or do anything..."
                   />
-                  <button className="grid size-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)]" aria-label="Ask Orin">
-                    <ArrowUp className="size-5" />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="grid size-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
+                    aria-label="Ask Orin"
+                  >
+                    {busy ? <Loader2 className="size-5 animate-spin" /> : <ArrowUp className="size-5" />}
                   </button>
-                </div>
+                </form>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  {chips.map(({ label, icon: Icon }) => (
+                  {chips.map(({ label, icon: Icon, prompt, mode: m }) => (
                     <button
                       key={label}
+                      onClick={() => void run(prompt, m)}
                       className="flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-sm font-medium shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5"
                     >
                       <Icon className="size-4 text-foreground/70" />
@@ -302,41 +506,141 @@ function Index() {
                     </button>
                   ))}
                 </div>
+                {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
               </div>
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-3">
-              {features.map(({ title, sub, tint, icon: Icon }) => (
-                <article key={title} className="glass-soft flex items-center gap-4 rounded-3xl p-6">
-                  <div className="min-w-0">
-                    <h3 className="font-semibold">{title}</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">{sub}</p>
-                  </div>
-                  <span className={`ml-auto grid size-24 shrink-0 place-items-center rounded-3xl bg-gradient-to-br ${tint} text-white/90`}>
-                    <Icon className="size-9" />
-                  </span>
-                </article>
-              ))}
-            </section>
+            {active ? (
+              <section ref={resultRef} className="glass-soft rounded-3xl p-6">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold capitalize">{mode} workspace</h3>
+                  {privateMode ? (
+                    <span className="rounded-full bg-emerald-400/20 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+                      Private — not saved
+                    </span>
+                  ) : null}
+                  <button
+                    className="ml-auto rounded-full bg-white/70 px-3 py-1 text-xs font-medium"
+                    onClick={() => {
+                      setTurns([]);
+                      setSessionId(null);
+                    }}
+                  >
+                    New session
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-4">
+                  {turns.map((turn, i) =>
+                    turn.role === "user" ? (
+                      <div key={i} className="ml-auto max-w-[80%] rounded-2xl bg-gradient-to-br from-primary/15 to-primary-glow/10 px-4 py-3 text-sm">
+                        {turn.content}
+                      </div>
+                    ) : (
+                      <article key={i} className="rounded-2xl bg-white/60 p-4">
+                        {turn.steps?.length ? (
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            {turn.steps.map((step, j) => (
+                              <span
+                                key={j}
+                                className="max-w-[260px] truncate rounded-full bg-white/80 px-3 py-1 text-[11px] text-muted-foreground"
+                              >
+                                {step.tool}: {step.detail}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        <OrinMarkdown text={turn.content} />
+                        {turn.sources?.length ? (
+                          <div className="mt-4 border-t border-border pt-3">
+                            <p className="text-xs font-semibold text-muted-foreground">Sources</p>
+                            <ul className="mt-2 space-y-1">
+                              {turn.sources.map((source) => (
+                                <li key={source.url} className="truncate text-xs">
+                                  <a
+                                    href={source.url}
+                                    target="_blank"
+                                    rel="noreferrer noopener"
+                                    className="text-primary underline-offset-2 hover:underline"
+                                  >
+                                    {source.title}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </article>
+                    ),
+                  )}
+                  {busy ? (
+                    <div className="flex items-center gap-2 rounded-2xl bg-white/60 p-4 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" />
+                      Orin is browsing the live web…
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            ) : (
+              <section className="grid gap-4 lg:grid-cols-3">
+                {features.map(({ title, sub, tint, icon: Icon }) => (
+                  <article key={title} className="glass-soft flex items-center gap-4 rounded-3xl p-6">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold">{title}</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">{sub}</p>
+                    </div>
+                    <span className={`ml-auto grid size-24 shrink-0 place-items-center rounded-3xl bg-gradient-to-br ${tint} text-white/90`}>
+                      <Icon className="size-9" />
+                    </span>
+                  </article>
+                ))}
+              </section>
+            )}
 
             <section className="grid gap-4 lg:grid-cols-3">
               <article className="glass-soft rounded-3xl p-6">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold">Recent Sessions</h3>
-                  <button className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium">View All</button>
+                  <button
+                    onClick={() => void refreshSessions()}
+                    className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium"
+                  >
+                    Refresh
+                  </button>
                 </div>
                 <ul className="mt-4 divide-y divide-border">
-                  {sessions.map(({ title, meta, icon: Icon }) => (
-                    <li key={title} className="flex items-center gap-3 py-3">
-                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/80 text-foreground/70">
-                        <Icon className="size-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{title}</p>
-                        <p className="text-xs text-muted-foreground">{meta}</p>
-                      </div>
-                    </li>
-                  ))}
+                  {sessions.length
+                    ? sessions.map((session) => (
+                        <li key={session.id} className="flex items-center gap-3 py-3">
+                          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/80 text-foreground/70">
+                            <History className="size-4" />
+                          </span>
+                          <button className="min-w-0 flex-1 text-left" onClick={() => void openSession(session.id)}>
+                            <p className="truncate text-sm font-medium">{session.title}</p>
+                            <p className="text-xs capitalize text-muted-foreground">
+                              {session.mode} • {relative(session.updated_at)}
+                            </p>
+                          </button>
+                          <button
+                            aria-label="Delete session"
+                            onClick={() => void removeSession(session.id)}
+                            className="rounded-full p-2 text-muted-foreground hover:bg-white/70"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </li>
+                      ))
+                    : fallbackSessions.map(({ title, meta, icon: Icon }) => (
+                        <li key={title} className="flex items-center gap-3 py-3 opacity-70">
+                          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/80 text-foreground/70">
+                            <Icon className="size-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{title}</p>
+                            <p className="text-xs text-muted-foreground">{meta}</p>
+                          </div>
+                        </li>
+                      ))}
                 </ul>
               </article>
 
@@ -345,15 +649,17 @@ function Index() {
                   AI Suggestions for You <Flame className="size-4 text-primary" />
                 </h3>
                 <ul className="mt-4 space-y-3">
-                  {suggestions.map(({ title, meta, icon: Icon }) => (
-                    <li key={title} className="flex items-center gap-3">
-                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 to-primary-glow/20 text-primary">
-                        <Icon className="size-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">{title}</p>
-                        <p className="text-xs text-muted-foreground">{meta}</p>
-                      </div>
+                  {suggestions.map(({ title, meta, icon: Icon, mode: m }) => (
+                    <li key={title}>
+                      <button className="flex w-full items-center gap-3 text-left" onClick={() => void run(title, m)}>
+                        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 to-primary-glow/20 text-primary">
+                          <Icon className="size-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{title}</p>
+                          <p className="text-xs text-muted-foreground">{meta}</p>
+                        </div>
+                      </button>
                     </li>
                   ))}
                 </ul>

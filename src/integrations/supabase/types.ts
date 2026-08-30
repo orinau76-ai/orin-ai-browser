@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      jobs: {
+        Row: {
+          answer: string | null
+          created_at: string
+          email: string
+          emailed_at: string | null
+          error: string | null
+          id: string
+          mode: string
+          prompt: string
+          sources: Json
+          status: string
+          steps: Json
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answer?: string | null
+          created_at?: string
+          email: string
+          emailed_at?: string | null
+          error?: string | null
+          id?: string
+          mode?: string
+          prompt: string
+          sources?: Json
+          status?: string
+          steps?: Json
+          token?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answer?: string | null
+          created_at?: string
+          email?: string
+          emailed_at?: string | null
+          error?: string | null
+          id?: string
+          mode?: string
+          prompt?: string
+          sources?: Json
+          status?: string
+          steps?: Json
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string

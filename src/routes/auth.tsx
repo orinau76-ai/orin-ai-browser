@@ -64,6 +64,27 @@ function AuthPage() {
     }
   }
 
+  async function continueWithGoogle() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin,
+      });
+      if (result.error) {
+        setError(result.error.message ?? "Google sign-in failed.");
+        return;
+      }
+      if (result.redirected) return;
+      void navigate({ to: "/" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
   return (
     <main className="grid min-h-screen place-items-center p-6">
       <div className="glass w-full max-w-md rounded-3xl p-8">

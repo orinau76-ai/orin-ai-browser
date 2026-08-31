@@ -43,14 +43,16 @@ import heroRibbon from "@/assets/hero-ribbon.jpg";
 import weatherBg from "@/assets/weather-bg.jpg";
 import { useAuth } from "@/hooks/useAuth";
 import { OrinMarkdown } from "@/components/orin-markdown";
+import { streamAgent, type LiveStep } from "@/lib/agent-client";
+import { listJobs, queueBackgroundJob } from "@/lib/jobs.functions";
 import {
-  askOrin,
   deleteSession,
   getSession,
   getSettings,
   listSessions,
   setPrivateMode as setPrivateModeFn,
 } from "@/lib/orin.functions";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({

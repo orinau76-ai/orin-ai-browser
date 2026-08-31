@@ -126,6 +126,16 @@ type Source = { url: string; title: string };
 type Step = { tool: string; detail: string };
 type Turn = { role: string; content: string; sources?: Source[]; steps?: Step[] };
 type SessionRow = { id: string; title: string; mode: string; updated_at: string };
+type JobRow = {
+  id: string;
+  prompt: string;
+  mode: string;
+  status: string;
+  error: string | null;
+  emailed_at: string | null;
+  created_at: string;
+};
+
 
 function relative(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();

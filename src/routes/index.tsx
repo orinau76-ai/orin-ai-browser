@@ -147,7 +147,14 @@ function Index() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [privateMode, setPrivate] = useState(false);
+  const [phase, setPhase] = useState("");
+  const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
+  const [liveSources, setLiveSources] = useState<Source[]>([]);
+  const [elapsed, setElapsed] = useState(0);
+  const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [handoff, setHandoff] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const activeTask = useRef<{ prompt: string; mode: Mode } | null>(null);
 
   const refreshSessions = useCallback(async () => {
     if (!user) return;
@@ -158,48 +165,134 @@ function Index() {
     }
   }, [user]);
 
+  const refreshJobs = useCallback(async () => {
+    if (!user) return;
+    try {
+      setJobs((await listJobs()) as JobRow[]);
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       setSessions([]);
+      setJobs([]);
       return;
     }
     void refreshSessions();
+    void refreshJobs();
     void getSettings()
       .then((s) => setPrivate(s.privateMode))
       .catch(() => {});
-  }, [user, refreshSessions]);
+  }, [user, refreshSessions, refreshJobs]);
+
+  // Live elapsed timer for the task graph
+  useEffect(() => {
+    if (!busy) return;
+    setElapsed(0);
+    const id = window.setInterval(() => setElapsed((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
+  // Hand the running task off to the server when the user leaves the page.
+  useEffect(() => {
+    if (!busy || !user || privateMode) return;
+    let cancelled = false;
+    let token: string | null = null;
+    const task = activeTask.current;
+    if (!task) return;
+
+    void queueBackgroundJob({ data: { prompt: task.prompt, mode: task.mode } })
+      .then((job) => {
+        if (cancelled) return;
+        token = job.token;
+        setHandoff(job.email);
+      })
+      .catch(() => {});
+
+    const onHide = () => {
+      if (document.visibilityState === "hidden" && token) {
+        navigator.sendBeacon(
+          "/api/public/run-job",
+          new Blob([JSON.stringify({ token })], { type: "application/json" }),
+        );
+        token = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [busy, user, privateMode]);
 
   const run = useCallback(
     async (prompt: string, runMode: Mode) => {
       if (!prompt.trim() || busy) return;
       if (!user) {
-        setError("Sign in to run Orin.");
+        setError("Sign in to run Orin — your tasks, sessions and results are tied to your account.");
         return;
       }
+      activeTask.current = { prompt, mode: runMode };
       setBusy(true);
       setError(null);
+      setHandoff(null);
+      setLiveSteps([]);
+      setLiveSources([]);
+      setPhase("Connecting to Orin");
       setMode(runMode);
       setTurns((prev) => [...prev, { role: "user", content: prompt }]);
       setInput("");
       requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }));
       try {
-        const result = await askOrin({
-          data: { prompt, mode: runMode, sessionId },
+        await streamAgent({ prompt, mode: runMode, sessionId }, (event) => {
+          if (event.type === "session") setSessionId(event.sessionId);
+          else if (event.type === "phase") setPhase(event.label);
+          else if (event.type === "source")
+            setLiveSources((prev) =>
+              prev.some((s) => s.url === event.source.url) ? prev : [...prev, event.source],
+            );
+          else if (event.type === "step") {
+            setPhase(`${event.step.tool}: ${event.step.detail}`.slice(0, 90));
+            setLiveSteps((prev) => {
+              const idx = prev.findIndex(
+                (s) => s.tool === event.step.tool && s.detail === event.step.detail,
+              );
+              const next: LiveStep = { ...event.step, status: event.status };
+              if (idx === -1) return [...prev, next];
+              const copy = [...prev];
+              copy[idx] = next;
+              return copy;
+            });
+          } else if (event.type === "done") {
+            setSessionId(event.sessionId);
+            setTurns((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: event.answer,
+                sources: event.sources,
+                steps: event.steps,
+              },
+            ]);
+            void refreshSessions();
+          } else if (event.type === "error") {
+            setError(event.message);
+          }
         });
-        setSessionId(result.sessionId);
-        setTurns((prev) => [
-          ...prev,
-          { role: "assistant", content: result.answer, sources: result.sources, steps: result.steps },
-        ]);
-        void refreshSessions();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Orin could not complete that.");
       } finally {
+        activeTask.current = null;
         setBusy(false);
+        setPhase("");
+        void refreshJobs();
       }
     },
-    [busy, sessionId, user, refreshSessions],
+    [busy, sessionId, user, refreshSessions, refreshJobs],
   );
+
 
   async function openSession(id: string) {
     setSessionId(id);

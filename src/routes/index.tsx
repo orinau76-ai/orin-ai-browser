@@ -38,6 +38,10 @@ import {
   Cloud,
   Apple,
   Bot,
+  Mail,
+  Plug,
+  CheckCircle2,
+
 } from "lucide-react";
 import heroRibbon from "@/assets/hero-ribbon.jpg";
 import weatherBg from "@/assets/weather-bg.jpg";

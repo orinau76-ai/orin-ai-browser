@@ -679,11 +679,75 @@ function Index() {
                     ),
                   )}
                   {busy ? (
-                    <div className="flex items-center gap-2 rounded-2xl bg-white/60 p-4 text-sm text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin" />
-                      Orin is browsing the live web…
+                    <div className="rounded-2xl bg-white/70 p-5 shadow-[var(--shadow-soft)]">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin text-primary" />
+                        <p className="text-sm font-semibold">{phase || "Orin is working"}</p>
+                        <span className="ml-auto rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium tabular-nums text-muted-foreground">
+                          {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
+                        </span>
+                      </div>
+
+                      <ol className="mt-4 space-y-0">
+                        <li className="relative flex gap-3 pb-4 pl-1">
+                          <span className="absolute left-[9px] top-5 h-full w-px bg-border" />
+                          <span className="z-10 mt-1 grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+                            <Sparkles className="size-3" />
+                          </span>
+                          <p className="text-xs text-muted-foreground">Task received — planning steps</p>
+                        </li>
+                        {liveSteps.map((step, i) => (
+                          <li key={`${step.tool}-${step.detail}-${i}`} className="relative flex gap-3 pb-4 pl-1">
+                            {i < liveSteps.length - 1 ? (
+                              <span className="absolute left-[9px] top-5 h-full w-px bg-border" />
+                            ) : null}
+                            <span
+                              className={`z-10 mt-1 grid size-5 shrink-0 place-items-center rounded-full text-white ${
+                                step.status === "error"
+                                  ? "bg-destructive"
+                                  : step.status === "done"
+                                    ? "bg-emerald-500"
+                                    : "animate-pulse bg-primary"
+                              }`}
+                            >
+                              {step.tool === "Search" ? (
+                                <Search className="size-3" />
+                              ) : step.tool === "Read" ? (
+                                <FileText className="size-3" />
+                              ) : (
+                                <Compass className="size-3" />
+                              )}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium">{step.tool}</p>
+                              <p className="truncate text-xs text-muted-foreground">{step.detail}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+
+                      {liveSources.length ? (
+                        <div className="mt-1 flex flex-wrap gap-2 border-t border-border pt-3">
+                          {liveSources.slice(-8).map((source) => (
+                            <span
+                              key={source.url}
+                              className="max-w-[220px] truncate rounded-full bg-white/80 px-3 py-1 text-[11px] text-muted-foreground"
+                            >
+                              {new URL(source.url).hostname.replace("www.", "")}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {handoff ? (
+                        <p className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <Mail className="size-3.5" />
+                          Safe to leave — Orin finishes this in the background and emails {handoff}.
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
+
                 </div>
               </section>
             ) : (

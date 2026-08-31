@@ -85,13 +85,20 @@ export function systemPrompt(mode: string, privateMode: boolean) {
   return `${base}${privacy} Today's date is ${new Date().toISOString().slice(0, 10)}. Use markdown. End with a "Sources" list of the urls you actually used.`;
 }
 
+export type AgentEvent =
+  | { type: "phase"; label: string }
+  | { type: "step"; step: Step; status: "start" | "done" | "error" }
+  | { type: "source"; source: Source };
+
 export async function runAgent(options: {
   mode: string;
   prompt: string;
   history: { role: "user" | "assistant"; content: string }[];
   privateMode: boolean;
   maxSteps?: number;
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<AgentResult> {
+  const emit = options.onEvent ?? (() => {});
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt(options.mode, options.privateMode) },
     ...options.history.map((m) => ({ role: m.role, content: m.content }) as ChatMessage),
@@ -102,14 +109,18 @@ export async function runAgent(options: {
   const steps: Step[] = [];
   const maxSteps = options.maxSteps ?? (options.mode === "agent" ? 10 : 6);
 
+  emit({ type: "phase", label: "Planning the task" });
+
   for (let i = 0; i < maxSteps; i++) {
     const reply = await chat({ model: MODEL, messages, tools });
     messages.push(reply);
 
     const calls = reply.tool_calls ?? [];
     if (!calls.length) {
+      emit({ type: "phase", label: "Writing the answer" });
       return { answer: reply.content ?? "", sources: [...sources.values()], steps };
     }
+
 
     for (const call of calls) {
       let args: Record<string, unknown> = {};

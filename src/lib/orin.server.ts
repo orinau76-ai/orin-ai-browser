@@ -129,34 +129,52 @@ export async function runAgent(options: {
       } catch {
         args = {};
       }
+      const label =
+        call.function.name === "web_search"
+          ? { tool: "Search", detail: String(args["query"] ?? "") }
+          : call.function.name === "read_page"
+            ? { tool: "Read", detail: String(args["url"] ?? "") }
+            : { tool: "Map", detail: String(args["url"] ?? "") };
+      emit({ type: "step", step: label, status: "start" });
       let output = "";
       try {
         if (call.function.name === "web_search") {
           const hits = await webSearch(String(args["query"] ?? ""), Number(args["limit"] ?? 6));
-          hits.forEach((h) => sources.set(h.url, { url: h.url, title: h.title }));
-          steps.push({ tool: "Search", detail: String(args["query"] ?? "") });
+          hits.forEach((h) => {
+            sources.set(h.url, { url: h.url, title: h.title });
+            emit({ type: "source", source: { url: h.url, title: h.title } });
+          });
+          steps.push(label);
+          emit({ type: "step", step: label, status: "done" });
           output = hits
             .map((h, n) => `[${n + 1}] ${h.title}\n${h.url}\n${h.description ?? ""}`)
             .join("\n\n");
         } else if (call.function.name === "read_page") {
           const page = await scrapePage(String(args["url"] ?? ""));
           sources.set(page.url, { url: page.url, title: page.title });
-          steps.push({ tool: "Read", detail: page.title });
+          const done = { tool: "Read", detail: page.title };
+          steps.push(done);
+          emit({ type: "source", source: { url: page.url, title: page.title } });
+          emit({ type: "step", step: done, status: "done" });
           output = `# ${page.title}\n${page.url}\n\n${page.markdown}`;
         } else if (call.function.name === "map_site") {
           const links = await mapSite(
             String(args["url"] ?? ""),
             args["search"] ? String(args["search"]) : undefined,
           );
-          steps.push({ tool: "Map", detail: String(args["url"] ?? "") });
+          steps.push(label);
+          emit({ type: "step", step: label, status: "done" });
           output = links.join("\n");
         } else {
           output = "Unknown tool.";
         }
       } catch (error) {
         output = `Tool failed: ${error instanceof Error ? error.message : String(error)}`;
-        steps.push({ tool: "Error", detail: output.slice(0, 120) });
+        const failed = { tool: "Error", detail: output.slice(0, 120) };
+        steps.push(failed);
+        emit({ type: "step", step: failed, status: "error" });
       }
+
 
       messages.push({
         role: "tool",

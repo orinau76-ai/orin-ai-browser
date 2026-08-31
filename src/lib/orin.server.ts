@@ -85,13 +85,20 @@ export function systemPrompt(mode: string, privateMode: boolean) {
   return `${base}${privacy} Today's date is ${new Date().toISOString().slice(0, 10)}. Use markdown. End with a "Sources" list of the urls you actually used.`;
 }
 
+export type AgentEvent =
+  | { type: "phase"; label: string }
+  | { type: "step"; step: Step; status: "start" | "done" | "error" }
+  | { type: "source"; source: Source };
+
 export async function runAgent(options: {
   mode: string;
   prompt: string;
   history: { role: "user" | "assistant"; content: string }[];
   privateMode: boolean;
   maxSteps?: number;
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<AgentResult> {
+  const emit = options.onEvent ?? (() => {});
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt(options.mode, options.privateMode) },
     ...options.history.map((m) => ({ role: m.role, content: m.content }) as ChatMessage),
@@ -102,14 +109,18 @@ export async function runAgent(options: {
   const steps: Step[] = [];
   const maxSteps = options.maxSteps ?? (options.mode === "agent" ? 10 : 6);
 
+  emit({ type: "phase", label: "Planning the task" });
+
   for (let i = 0; i < maxSteps; i++) {
     const reply = await chat({ model: MODEL, messages, tools });
     messages.push(reply);
 
     const calls = reply.tool_calls ?? [];
     if (!calls.length) {
+      emit({ type: "phase", label: "Writing the answer" });
       return { answer: reply.content ?? "", sources: [...sources.values()], steps };
     }
+
 
     for (const call of calls) {
       let args: Record<string, unknown> = {};
@@ -118,34 +129,52 @@ export async function runAgent(options: {
       } catch {
         args = {};
       }
+      const label =
+        call.function.name === "web_search"
+          ? { tool: "Search", detail: String(args["query"] ?? "") }
+          : call.function.name === "read_page"
+            ? { tool: "Read", detail: String(args["url"] ?? "") }
+            : { tool: "Map", detail: String(args["url"] ?? "") };
+      emit({ type: "step", step: label, status: "start" });
       let output = "";
       try {
         if (call.function.name === "web_search") {
           const hits = await webSearch(String(args["query"] ?? ""), Number(args["limit"] ?? 6));
-          hits.forEach((h) => sources.set(h.url, { url: h.url, title: h.title }));
-          steps.push({ tool: "Search", detail: String(args["query"] ?? "") });
+          hits.forEach((h) => {
+            sources.set(h.url, { url: h.url, title: h.title });
+            emit({ type: "source", source: { url: h.url, title: h.title } });
+          });
+          steps.push(label);
+          emit({ type: "step", step: label, status: "done" });
           output = hits
             .map((h, n) => `[${n + 1}] ${h.title}\n${h.url}\n${h.description ?? ""}`)
             .join("\n\n");
         } else if (call.function.name === "read_page") {
           const page = await scrapePage(String(args["url"] ?? ""));
           sources.set(page.url, { url: page.url, title: page.title });
-          steps.push({ tool: "Read", detail: page.title });
+          const done = { tool: "Read", detail: page.title };
+          steps.push(done);
+          emit({ type: "source", source: { url: page.url, title: page.title } });
+          emit({ type: "step", step: done, status: "done" });
           output = `# ${page.title}\n${page.url}\n\n${page.markdown}`;
         } else if (call.function.name === "map_site") {
           const links = await mapSite(
             String(args["url"] ?? ""),
             args["search"] ? String(args["search"]) : undefined,
           );
-          steps.push({ tool: "Map", detail: String(args["url"] ?? "") });
+          steps.push(label);
+          emit({ type: "step", step: label, status: "done" });
           output = links.join("\n");
         } else {
           output = "Unknown tool.";
         }
       } catch (error) {
         output = `Tool failed: ${error instanceof Error ? error.message : String(error)}`;
-        steps.push({ tool: "Error", detail: output.slice(0, 120) });
+        const failed = { tool: "Error", detail: output.slice(0, 120) };
+        steps.push(failed);
+        emit({ type: "step", step: failed, status: "error" });
       }
+
 
       messages.push({
         role: "tool",

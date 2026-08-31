@@ -38,19 +38,25 @@ import {
   Cloud,
   Apple,
   Bot,
+  Mail,
+  Plug,
+  CheckCircle2,
+
 } from "lucide-react";
 import heroRibbon from "@/assets/hero-ribbon.jpg";
 import weatherBg from "@/assets/weather-bg.jpg";
 import { useAuth } from "@/hooks/useAuth";
 import { OrinMarkdown } from "@/components/orin-markdown";
+import { streamAgent, type LiveStep } from "@/lib/agent-client";
+import { listJobs, queueBackgroundJob } from "@/lib/jobs.functions";
 import {
-  askOrin,
   deleteSession,
   getSession,
   getSettings,
   listSessions,
   setPrivateMode as setPrivateModeFn,
 } from "@/lib/orin.functions";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -124,6 +130,16 @@ type Source = { url: string; title: string };
 type Step = { tool: string; detail: string };
 type Turn = { role: string; content: string; sources?: Source[]; steps?: Step[] };
 type SessionRow = { id: string; title: string; mode: string; updated_at: string };
+type JobRow = {
+  id: string;
+  prompt: string;
+  mode: string;
+  status: string;
+  error: string | null;
+  emailed_at: string | null;
+  created_at: string;
+};
+
 
 function relative(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -145,7 +161,14 @@ function Index() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [privateMode, setPrivate] = useState(false);
+  const [phase, setPhase] = useState("");
+  const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
+  const [liveSources, setLiveSources] = useState<Source[]>([]);
+  const [elapsed, setElapsed] = useState(0);
+  const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [handoff, setHandoff] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const activeTask = useRef<{ prompt: string; mode: Mode } | null>(null);
 
   const refreshSessions = useCallback(async () => {
     if (!user) return;
@@ -156,48 +179,134 @@ function Index() {
     }
   }, [user]);
 
+  const refreshJobs = useCallback(async () => {
+    if (!user) return;
+    try {
+      setJobs((await listJobs()) as JobRow[]);
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       setSessions([]);
+      setJobs([]);
       return;
     }
     void refreshSessions();
+    void refreshJobs();
     void getSettings()
       .then((s) => setPrivate(s.privateMode))
       .catch(() => {});
-  }, [user, refreshSessions]);
+  }, [user, refreshSessions, refreshJobs]);
+
+  // Live elapsed timer for the task graph
+  useEffect(() => {
+    if (!busy) return;
+    setElapsed(0);
+    const id = window.setInterval(() => setElapsed((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
+  // Hand the running task off to the server when the user leaves the page.
+  useEffect(() => {
+    if (!busy || !user || privateMode) return;
+    let cancelled = false;
+    let token: string | null = null;
+    const task = activeTask.current;
+    if (!task) return;
+
+    void queueBackgroundJob({ data: { prompt: task.prompt, mode: task.mode } })
+      .then((job) => {
+        if (cancelled) return;
+        token = job.token;
+        setHandoff(job.email);
+      })
+      .catch(() => {});
+
+    const onHide = () => {
+      if (document.visibilityState === "hidden" && token) {
+        navigator.sendBeacon(
+          "/api/public/run-job",
+          new Blob([JSON.stringify({ token })], { type: "application/json" }),
+        );
+        token = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [busy, user, privateMode]);
 
   const run = useCallback(
     async (prompt: string, runMode: Mode) => {
       if (!prompt.trim() || busy) return;
       if (!user) {
-        setError("Sign in to run Orin.");
+        setError("Sign in to run Orin — your tasks, sessions and results are tied to your account.");
         return;
       }
+      activeTask.current = { prompt, mode: runMode };
       setBusy(true);
       setError(null);
+      setHandoff(null);
+      setLiveSteps([]);
+      setLiveSources([]);
+      setPhase("Connecting to Orin");
       setMode(runMode);
       setTurns((prev) => [...prev, { role: "user", content: prompt }]);
       setInput("");
       requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }));
       try {
-        const result = await askOrin({
-          data: { prompt, mode: runMode, sessionId },
+        await streamAgent({ prompt, mode: runMode, sessionId }, (event) => {
+          if (event.type === "session") setSessionId(event.sessionId);
+          else if (event.type === "phase") setPhase(event.label);
+          else if (event.type === "source")
+            setLiveSources((prev) =>
+              prev.some((s) => s.url === event.source.url) ? prev : [...prev, event.source],
+            );
+          else if (event.type === "step") {
+            setPhase(`${event.step.tool}: ${event.step.detail}`.slice(0, 90));
+            setLiveSteps((prev) => {
+              const idx = prev.findIndex(
+                (s) => s.tool === event.step.tool && s.detail === event.step.detail,
+              );
+              const next: LiveStep = { ...event.step, status: event.status };
+              if (idx === -1) return [...prev, next];
+              const copy = [...prev];
+              copy[idx] = next;
+              return copy;
+            });
+          } else if (event.type === "done") {
+            setSessionId(event.sessionId);
+            setTurns((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: event.answer,
+                sources: event.sources,
+                steps: event.steps,
+              },
+            ]);
+            void refreshSessions();
+          } else if (event.type === "error") {
+            setError(event.message);
+          }
         });
-        setSessionId(result.sessionId);
-        setTurns((prev) => [
-          ...prev,
-          { role: "assistant", content: result.answer, sources: result.sources, steps: result.steps },
-        ]);
-        void refreshSessions();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Orin could not complete that.");
       } finally {
+        activeTask.current = null;
         setBusy(false);
+        setPhase("");
+        void refreshJobs();
       }
     },
-    [busy, sessionId, user, refreshSessions],
+    [busy, sessionId, user, refreshSessions, refreshJobs],
   );
+
 
   async function openSession(id: string) {
     setSessionId(id);
@@ -574,11 +683,75 @@ function Index() {
                     ),
                   )}
                   {busy ? (
-                    <div className="flex items-center gap-2 rounded-2xl bg-white/60 p-4 text-sm text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin" />
-                      Orin is browsing the live web…
+                    <div className="rounded-2xl bg-white/70 p-5 shadow-[var(--shadow-soft)]">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin text-primary" />
+                        <p className="text-sm font-semibold">{phase || "Orin is working"}</p>
+                        <span className="ml-auto rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium tabular-nums text-muted-foreground">
+                          {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
+                        </span>
+                      </div>
+
+                      <ol className="mt-4 space-y-0">
+                        <li className="relative flex gap-3 pb-4 pl-1">
+                          <span className="absolute left-[9px] top-5 h-full w-px bg-border" />
+                          <span className="z-10 mt-1 grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+                            <Sparkles className="size-3" />
+                          </span>
+                          <p className="text-xs text-muted-foreground">Task received — planning steps</p>
+                        </li>
+                        {liveSteps.map((step, i) => (
+                          <li key={`${step.tool}-${step.detail}-${i}`} className="relative flex gap-3 pb-4 pl-1">
+                            {i < liveSteps.length - 1 ? (
+                              <span className="absolute left-[9px] top-5 h-full w-px bg-border" />
+                            ) : null}
+                            <span
+                              className={`z-10 mt-1 grid size-5 shrink-0 place-items-center rounded-full text-white ${
+                                step.status === "error"
+                                  ? "bg-destructive"
+                                  : step.status === "done"
+                                    ? "bg-emerald-500"
+                                    : "animate-pulse bg-primary"
+                              }`}
+                            >
+                              {step.tool === "Search" ? (
+                                <Search className="size-3" />
+                              ) : step.tool === "Read" ? (
+                                <FileText className="size-3" />
+                              ) : (
+                                <Compass className="size-3" />
+                              )}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium">{step.tool}</p>
+                              <p className="truncate text-xs text-muted-foreground">{step.detail}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+
+                      {liveSources.length ? (
+                        <div className="mt-1 flex flex-wrap gap-2 border-t border-border pt-3">
+                          {liveSources.slice(-8).map((source) => (
+                            <span
+                              key={source.url}
+                              className="max-w-[220px] truncate rounded-full bg-white/80 px-3 py-1 text-[11px] text-muted-foreground"
+                            >
+                              {new URL(source.url).hostname.replace("www.", "")}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {handoff ? (
+                        <p className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <Mail className="size-3.5" />
+                          Safe to leave — Orin finishes this in the background and emails {handoff}.
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
+
                 </div>
               </section>
             ) : (

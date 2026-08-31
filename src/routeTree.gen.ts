@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as ApiPublicRunJobRouteImport } from './routes/api/public/run-job'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAgentRoute = ApiAgentRouteImport.update({
+  id: '/api/agent',
+  path: '/api/agent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicRunJobRoute = ApiPublicRunJobRouteImport.update({
   id: '/api/public/run-job',
   path: '/api/public/run-job',
@@ -32,30 +38,34 @@ const ApiPublicRunJobRoute = ApiPublicRunJobRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/public/run-job': typeof ApiPublicRunJobRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/public/run-job': typeof ApiPublicRunJobRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/public/run-job': typeof ApiPublicRunJobRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/api/public/run-job'
+  fullPaths: '/' | '/auth' | '/api/agent' | '/api/public/run-job'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/api/public/run-job'
-  id: '__root__' | '/' | '/auth' | '/api/public/run-job'
+  to: '/' | '/auth' | '/api/agent' | '/api/public/run-job'
+  id: '__root__' | '/' | '/auth' | '/api/agent' | '/api/public/run-job'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  ApiAgentRoute: typeof ApiAgentRoute
   ApiPublicRunJobRoute: typeof ApiPublicRunJobRoute
 }
 
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/agent': {
+      id: '/api/agent'
+      path: '/api/agent'
+      fullPath: '/api/agent'
+      preLoaderRoute: typeof ApiAgentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/run-job': {
       id: '/api/public/run-job'
       path: '/api/public/run-job'
@@ -88,6 +105,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  ApiAgentRoute: ApiAgentRoute,
   ApiPublicRunJobRoute: ApiPublicRunJobRoute,
 }
 export const routeTree = rootRouteImport

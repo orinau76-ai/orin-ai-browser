@@ -68,7 +68,48 @@ const tools: ToolDef[] = [
       },
     },
   },
+  simpleTool("wikidata", "Look up entities in Wikidata. Treat results as supporting evidence, not proof.", {
+    query: { type: "string" },
+  }),
+  simpleTool("wikipedia", "Get the Wikimedia/Wikipedia summary for a topic or company.", {
+    title: { type: "string" },
+  }),
+  simpleTool("news", "Live global news from GDELT for a company, person or topic.", {
+    query: { type: "string" },
+    hours: { type: "number", description: "Look-back window in hours, default 48" },
+  }),
+  simpleTool("world_bank", "World Bank economic indicator series for a country code (e.g. US, IN).", {
+    country: { type: "string" },
+    indicator: { type: "string", description: "Indicator code, default NY.GDP.MKTP.CD" },
+  }),
+  simpleTool("sec_edgar", "Search U.S. SEC EDGAR filings for a company.", {
+    query: { type: "string" },
+  }),
+  simpleTool("us_census", "U.S. Census ACS population by state.", {
+    year: { type: "number", description: "ACS year, default 2022" },
+  }),
 ];
+
+function simpleTool(
+  name: string,
+  description: string,
+  properties: Record<string, Record<string, unknown>>,
+): ToolDef {
+  return {
+    type: "function",
+    function: {
+      name,
+      description,
+      parameters: {
+        type: "object",
+        properties,
+        required: [Object.keys(properties)[0]!],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 
 const prompts: Record<string, string> = {
   research:

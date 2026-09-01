@@ -180,12 +180,26 @@ export async function runAgent(options: {
       } catch {
         args = {};
       }
+      const dataLabels: Record<string, string> = {
+        wikidata: "Wikidata",
+        wikipedia: "Wikipedia",
+        news: "News",
+        world_bank: "World Bank",
+        sec_edgar: "SEC EDGAR",
+        us_census: "US Census",
+      };
       const label =
         call.function.name === "web_search"
           ? { tool: "Search", detail: String(args["query"] ?? "") }
           : call.function.name === "read_page"
             ? { tool: "Read", detail: String(args["url"] ?? "") }
-            : { tool: "Map", detail: String(args["url"] ?? "") };
+            : call.function.name === "map_site"
+              ? { tool: "Map", detail: String(args["url"] ?? "") }
+              : {
+                  tool: dataLabels[call.function.name] ?? call.function.name,
+                  detail: String(args["query"] ?? args["title"] ?? args["country"] ?? "live data"),
+                };
+
       emit({ type: "step", step: label, status: "start" });
       let output = "";
       try {

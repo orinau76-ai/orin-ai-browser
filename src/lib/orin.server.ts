@@ -216,7 +216,6 @@ export async function runAgent(options: {
             .map((h, n) => `[${n + 1}] ${h.title}\n${h.url}\n${h.description ?? ""}`)
             .join("\n\n");
           if (!hits.length) output = (await tavilySearch(query)) ?? "No results.";
-        }
         } else if (call.function.name === "read_page") {
           const page = await scrapePage(String(args["url"] ?? ""));
           sources.set(page.url, { url: page.url, title: page.title });

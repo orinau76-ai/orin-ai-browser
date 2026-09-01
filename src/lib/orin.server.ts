@@ -204,7 +204,8 @@ export async function runAgent(options: {
       let output = "";
       try {
         if (call.function.name === "web_search") {
-          const hits = await webSearch(String(args["query"] ?? ""), Number(args["limit"] ?? 6));
+          const query = String(args["query"] ?? "");
+          const hits = await webSearch(query, Number(args["limit"] ?? 6));
           hits.forEach((h) => {
             sources.set(h.url, { url: h.url, title: h.title });
             emit({ type: "source", source: { url: h.url, title: h.title } });
@@ -214,6 +215,8 @@ export async function runAgent(options: {
           output = hits
             .map((h, n) => `[${n + 1}] ${h.title}\n${h.url}\n${h.description ?? ""}`)
             .join("\n\n");
+          if (!hits.length) output = (await tavilySearch(query)) ?? "No results.";
+        }
         } else if (call.function.name === "read_page") {
           const page = await scrapePage(String(args["url"] ?? ""));
           sources.set(page.url, { url: page.url, title: page.title });

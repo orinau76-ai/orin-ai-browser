@@ -1,5 +1,15 @@
 import { chat, type ChatMessage, type ToolDef } from "./gemini.server";
 import { mapSite, scrapePage, webSearch } from "./firecrawl.server";
+import {
+  censusPopulation,
+  gdeltNews,
+  secEdgar,
+  tavilySearch,
+  wikidataSearch,
+  wikipediaSummary,
+  worldBank,
+} from "./opendata.server";
+
 
 export type Source = { url: string; title: string };
 export type Step = { tool: string; detail: string };

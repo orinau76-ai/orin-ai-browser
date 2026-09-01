@@ -231,8 +231,29 @@ export async function runAgent(options: {
           emit({ type: "step", step: label, status: "done" });
           output = links.join("\n");
         } else {
-          output = "Unknown tool.";
+          const name = call.function.name;
+          if (name === "wikidata") {
+            output = await wikidataSearch(String(args["query"] ?? ""));
+          } else if (name === "wikipedia") {
+            output = await wikipediaSummary(String(args["title"] ?? args["query"] ?? ""));
+          } else if (name === "news") {
+            output = await gdeltNews(String(args["query"] ?? ""), Number(args["hours"] ?? 48));
+          } else if (name === "world_bank") {
+            output = await worldBank(
+              String(args["country"] ?? "WLD"),
+              String(args["indicator"] ?? "NY.GDP.MKTP.CD"),
+            );
+          } else if (name === "sec_edgar") {
+            output = await secEdgar(String(args["query"] ?? ""));
+          } else if (name === "us_census") {
+            output = await censusPopulation(Number(args["year"] ?? 2022));
+          } else {
+            output = "Unknown tool.";
+          }
+          steps.push(label);
+          emit({ type: "step", step: label, status: "done" });
         }
+
       } catch (error) {
         output = `Tool failed: ${error instanceof Error ? error.message : String(error)}`;
         const failed = { tool: "Error", detail: output.slice(0, 120) };

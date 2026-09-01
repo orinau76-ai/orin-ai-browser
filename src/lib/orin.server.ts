@@ -1,5 +1,15 @@
 import { chat, type ChatMessage, type ToolDef } from "./gemini.server";
 import { mapSite, scrapePage, webSearch } from "./firecrawl.server";
+import {
+  censusPopulation,
+  gdeltNews,
+  secEdgar,
+  tavilySearch,
+  wikidataSearch,
+  wikipediaSummary,
+  worldBank,
+} from "./opendata.server";
+
 
 export type Source = { url: string; title: string };
 export type Step = { tool: string; detail: string };
@@ -58,7 +68,48 @@ const tools: ToolDef[] = [
       },
     },
   },
+  simpleTool("wikidata", "Look up entities in Wikidata. Treat results as supporting evidence, not proof.", {
+    query: { type: "string" },
+  }),
+  simpleTool("wikipedia", "Get the Wikimedia/Wikipedia summary for a topic or company.", {
+    title: { type: "string" },
+  }),
+  simpleTool("news", "Live global news from GDELT for a company, person or topic.", {
+    query: { type: "string" },
+    hours: { type: "number", description: "Look-back window in hours, default 48" },
+  }),
+  simpleTool("world_bank", "World Bank economic indicator series for a country code (e.g. US, IN).", {
+    country: { type: "string" },
+    indicator: { type: "string", description: "Indicator code, default NY.GDP.MKTP.CD" },
+  }),
+  simpleTool("sec_edgar", "Search U.S. SEC EDGAR filings for a company.", {
+    query: { type: "string" },
+  }),
+  simpleTool("us_census", "U.S. Census ACS population by state.", {
+    year: { type: "number", description: "ACS year, default 2022" },
+  }),
 ];
+
+function simpleTool(
+  name: string,
+  description: string,
+  properties: Record<string, Record<string, unknown>>,
+): ToolDef {
+  return {
+    type: "function",
+    function: {
+      name,
+      description,
+      parameters: {
+        type: "object",
+        properties,
+        required: [Object.keys(properties)[0]!],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 
 const prompts: Record<string, string> = {
   research:
@@ -129,17 +180,32 @@ export async function runAgent(options: {
       } catch {
         args = {};
       }
+      const dataLabels: Record<string, string> = {
+        wikidata: "Wikidata",
+        wikipedia: "Wikipedia",
+        news: "News",
+        world_bank: "World Bank",
+        sec_edgar: "SEC EDGAR",
+        us_census: "US Census",
+      };
       const label =
         call.function.name === "web_search"
           ? { tool: "Search", detail: String(args["query"] ?? "") }
           : call.function.name === "read_page"
             ? { tool: "Read", detail: String(args["url"] ?? "") }
-            : { tool: "Map", detail: String(args["url"] ?? "") };
+            : call.function.name === "map_site"
+              ? { tool: "Map", detail: String(args["url"] ?? "") }
+              : {
+                  tool: dataLabels[call.function.name] ?? call.function.name,
+                  detail: String(args["query"] ?? args["title"] ?? args["country"] ?? "live data"),
+                };
+
       emit({ type: "step", step: label, status: "start" });
       let output = "";
       try {
         if (call.function.name === "web_search") {
-          const hits = await webSearch(String(args["query"] ?? ""), Number(args["limit"] ?? 6));
+          const query = String(args["query"] ?? "");
+          const hits = await webSearch(query, Number(args["limit"] ?? 6));
           hits.forEach((h) => {
             sources.set(h.url, { url: h.url, title: h.title });
             emit({ type: "source", source: { url: h.url, title: h.title } });
@@ -149,6 +215,7 @@ export async function runAgent(options: {
           output = hits
             .map((h, n) => `[${n + 1}] ${h.title}\n${h.url}\n${h.description ?? ""}`)
             .join("\n\n");
+          if (!hits.length) output = (await tavilySearch(query)) ?? "No results.";
         } else if (call.function.name === "read_page") {
           const page = await scrapePage(String(args["url"] ?? ""));
           sources.set(page.url, { url: page.url, title: page.title });
@@ -166,8 +233,29 @@ export async function runAgent(options: {
           emit({ type: "step", step: label, status: "done" });
           output = links.join("\n");
         } else {
-          output = "Unknown tool.";
+          const name = call.function.name;
+          if (name === "wikidata") {
+            output = await wikidataSearch(String(args["query"] ?? ""));
+          } else if (name === "wikipedia") {
+            output = await wikipediaSummary(String(args["title"] ?? args["query"] ?? ""));
+          } else if (name === "news") {
+            output = await gdeltNews(String(args["query"] ?? ""), Number(args["hours"] ?? 48));
+          } else if (name === "world_bank") {
+            output = await worldBank(
+              String(args["country"] ?? "WLD"),
+              String(args["indicator"] ?? "NY.GDP.MKTP.CD"),
+            );
+          } else if (name === "sec_edgar") {
+            output = await secEdgar(String(args["query"] ?? ""));
+          } else if (name === "us_census") {
+            output = await censusPopulation(Number(args["year"] ?? 2022));
+          } else {
+            output = "Unknown tool.";
+          }
+          steps.push(label);
+          emit({ type: "step", step: label, status: "done" });
         }
+
       } catch (error) {
         output = `Tool failed: ${error instanceof Error ? error.message : String(error)}`;
         const failed = { tool: "Error", detail: output.slice(0, 120) };

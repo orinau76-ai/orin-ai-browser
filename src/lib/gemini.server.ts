@@ -34,6 +34,24 @@ export class GatewayError extends Error {
   }
 }
 
+/**
+ * Gemini rejects conversations that end on a model turn, and it drops
+ * assistant messages that carry neither text nor tool calls. Clean both up so
+ * a stored empty answer or a trailing assistant reply can never break a run.
+ */
+function sanitize(messages: ChatMessage[]): ChatMessage[] {
+  const cleaned = messages.filter((m) => {
+    if (m.role === "tool") return true;
+    if (m.role === "assistant") return Boolean(m.content?.trim()) || Boolean(m.tool_calls?.length);
+    return Boolean(m.content?.trim());
+  });
+  const last = cleaned[cleaned.length - 1];
+  if (last && last.role === "assistant") {
+    cleaned.push({ role: "user", content: "Continue." });
+  }
+  return cleaned;
+}
+
 export async function chat(options: {
   model: string;
   messages: ChatMessage[];
@@ -53,10 +71,11 @@ export async function chat(options: {
     ...(options.signal ? { signal: options.signal } : {}),
     body: JSON.stringify({
       model: options.model,
-      messages: options.messages,
+      messages: sanitize(options.messages),
       ...(options.tools?.length ? { tools: options.tools, tool_choice: "auto" } : {}),
     }),
   });
+
 
   if (!response.ok) {
     const text = await response.text();

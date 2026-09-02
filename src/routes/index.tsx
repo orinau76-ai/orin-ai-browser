@@ -881,6 +881,40 @@ function Index() {
             <p className="py-2 text-center text-sm text-muted-foreground">
               Orin AI Browser — Your AI-Powered Gateway to Everything 💗
             </p>
+            </div>
+
+            {/* Pinned composer — always visible at the bottom */}
+            <div className="w-full shrink-0 border-t border-border bg-background/70 p-4 backdrop-blur-xl">
+              {error ? (
+                <p className="mx-auto mb-2 max-w-3xl text-sm text-destructive">{error}</p>
+              ) : null}
+              <form
+                className="glass mx-auto flex w-full max-w-3xl items-center gap-3 rounded-full py-2.5 pl-5 pr-2.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(input, mode);
+                }}
+              >
+                <Search className="size-4 shrink-0 text-muted-foreground" />
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  placeholder={`Ask Orin to ${mode}…`}
+                />
+                <span className="shrink-0 rounded-full bg-white/70 px-3 py-1 text-[11px] font-medium capitalize text-muted-foreground">
+                  {mode}
+                </span>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
+                  aria-label="Send"
+                >
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
+                </button>
+              </form>
+            </div>
           </main>
         </div>
       </div>

@@ -588,7 +588,8 @@ function Index() {
           </aside>
 
           {/* Main */}
-          <main className="flex min-w-0 flex-1 flex-col gap-4">
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
             <section className="glass-soft relative overflow-hidden rounded-3xl p-10">
               <img
                 src={heroRibbon}

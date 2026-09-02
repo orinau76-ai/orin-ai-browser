@@ -173,104 +173,109 @@ export async function runAgent(options: {
     }
 
 
-    for (const call of calls) {
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(call.function.arguments || "{}");
-      } catch {
-        args = {};
-      }
-      const dataLabels: Record<string, string> = {
-        wikidata: "Wikidata",
-        wikipedia: "Wikipedia",
-        news: "News",
-        world_bank: "World Bank",
-        sec_edgar: "SEC EDGAR",
-        us_census: "US Census",
-      };
-      const label =
-        call.function.name === "web_search"
-          ? { tool: "Search", detail: String(args["query"] ?? "") }
-          : call.function.name === "read_page"
-            ? { tool: "Read", detail: String(args["url"] ?? "") }
-            : call.function.name === "map_site"
-              ? { tool: "Map", detail: String(args["url"] ?? "") }
-              : {
-                  tool: dataLabels[call.function.name] ?? call.function.name,
-                  detail: String(args["query"] ?? args["title"] ?? args["country"] ?? "live data"),
-                };
-
-      emit({ type: "step", step: label, status: "start" });
-      let output = "";
-      try {
-        if (call.function.name === "web_search") {
-          const query = String(args["query"] ?? "");
-          const hits = await webSearch(query, Number(args["limit"] ?? 6));
-          hits.forEach((h) => {
-            sources.set(h.url, { url: h.url, title: h.title });
-            emit({ type: "source", source: { url: h.url, title: h.title } });
-          });
-          steps.push(label);
-          emit({ type: "step", step: label, status: "done" });
-          output = hits
-            .map((h, n) => `[${n + 1}] ${h.title}\n${h.url}\n${h.description ?? ""}`)
-            .join("\n\n");
-          if (!hits.length) output = (await tavilySearch(query)) ?? "No results.";
-        } else if (call.function.name === "read_page") {
-          const page = await scrapePage(String(args["url"] ?? ""));
-          sources.set(page.url, { url: page.url, title: page.title });
-          const done = { tool: "Read", detail: page.title };
-          steps.push(done);
-          emit({ type: "source", source: { url: page.url, title: page.title } });
-          emit({ type: "step", step: done, status: "done" });
-          output = `# ${page.title}\n${page.url}\n\n${page.markdown}`;
-        } else if (call.function.name === "map_site") {
-          const links = await mapSite(
-            String(args["url"] ?? ""),
-            args["search"] ? String(args["search"]) : undefined,
-          );
-          steps.push(label);
-          emit({ type: "step", step: label, status: "done" });
-          output = links.join("\n");
-        } else {
-          const name = call.function.name;
-          if (name === "wikidata") {
-            output = await wikidataSearch(String(args["query"] ?? ""));
-          } else if (name === "wikipedia") {
-            output = await wikipediaSummary(String(args["title"] ?? args["query"] ?? ""));
-          } else if (name === "news") {
-            output = await gdeltNews(String(args["query"] ?? ""), Number(args["hours"] ?? 48));
-          } else if (name === "world_bank") {
-            output = await worldBank(
-              String(args["country"] ?? "WLD"),
-              String(args["indicator"] ?? "NY.GDP.MKTP.CD"),
-            );
-          } else if (name === "sec_edgar") {
-            output = await secEdgar(String(args["query"] ?? ""));
-          } else if (name === "us_census") {
-            output = await censusPopulation(Number(args["year"] ?? 2022));
-          } else {
-            output = "Unknown tool.";
-          }
-          steps.push(label);
-          emit({ type: "step", step: label, status: "done" });
+    // Run every tool call of this turn concurrently — big latency win on deep research.
+    const results = await Promise.all(
+      calls.map(async (call) => {
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(call.function.arguments || "{}");
+        } catch {
+          args = {};
         }
+        const dataLabels: Record<string, string> = {
+          wikidata: "Wikidata",
+          wikipedia: "Wikipedia",
+          news: "News",
+          world_bank: "World Bank",
+          sec_edgar: "SEC EDGAR",
+          us_census: "US Census",
+        };
+        const label =
+          call.function.name === "web_search"
+            ? { tool: "Search", detail: String(args["query"] ?? "") }
+            : call.function.name === "read_page"
+              ? { tool: "Read", detail: String(args["url"] ?? "") }
+              : call.function.name === "map_site"
+                ? { tool: "Map", detail: String(args["url"] ?? "") }
+                : {
+                    tool: dataLabels[call.function.name] ?? call.function.name,
+                    detail: String(args["query"] ?? args["title"] ?? args["country"] ?? "live data"),
+                  };
 
-      } catch (error) {
-        output = `Tool failed: ${error instanceof Error ? error.message : String(error)}`;
-        const failed = { tool: "Error", detail: output.slice(0, 120) };
-        steps.push(failed);
-        emit({ type: "step", step: failed, status: "error" });
-      }
+        emit({ type: "step", step: label, status: "start" });
+        let output = "";
+        try {
+          if (call.function.name === "web_search") {
+            const query = String(args["query"] ?? "");
+            const hits = await webSearch(query, Number(args["limit"] ?? 5));
+            hits.forEach((h) => {
+              sources.set(h.url, { url: h.url, title: h.title });
+              emit({ type: "source", source: { url: h.url, title: h.title } });
+            });
+            steps.push(label);
+            emit({ type: "step", step: label, status: "done" });
+            output = hits
+              .map((h, n) => `[${n + 1}] ${h.title}\n${h.url}\n${h.description ?? ""}`)
+              .join("\n\n");
+            if (!hits.length) output = (await tavilySearch(query)) ?? "No results.";
+          } else if (call.function.name === "read_page") {
+            const page = await scrapePage(String(args["url"] ?? ""));
+            sources.set(page.url, { url: page.url, title: page.title });
+            const done = { tool: "Read", detail: page.title };
+            steps.push(done);
+            emit({ type: "source", source: { url: page.url, title: page.title } });
+            emit({ type: "step", step: done, status: "done" });
+            output = `# ${page.title}\n${page.url}\n\n${page.markdown}`;
+          } else if (call.function.name === "map_site") {
+            const links = await mapSite(
+              String(args["url"] ?? ""),
+              args["search"] ? String(args["search"]) : undefined,
+            );
+            steps.push(label);
+            emit({ type: "step", step: label, status: "done" });
+            output = links.join("\n");
+          } else {
+            const name = call.function.name;
+            if (name === "wikidata") {
+              output = await wikidataSearch(String(args["query"] ?? ""));
+            } else if (name === "wikipedia") {
+              output = await wikipediaSummary(String(args["title"] ?? args["query"] ?? ""));
+            } else if (name === "news") {
+              output = await gdeltNews(String(args["query"] ?? ""), Number(args["hours"] ?? 48));
+            } else if (name === "world_bank") {
+              output = await worldBank(
+                String(args["country"] ?? "WLD"),
+                String(args["indicator"] ?? "NY.GDP.MKTP.CD"),
+              );
+            } else if (name === "sec_edgar") {
+              output = await secEdgar(String(args["query"] ?? ""));
+            } else if (name === "us_census") {
+              output = await censusPopulation(Number(args["year"] ?? 2022));
+            } else {
+              output = "Unknown tool.";
+            }
+            steps.push(label);
+            emit({ type: "step", step: label, status: "done" });
+          }
+        } catch (error) {
+          output = `Tool failed: ${error instanceof Error ? error.message : String(error)}`;
+          const failed = { tool: "Error", detail: output.slice(0, 120) };
+          steps.push(failed);
+          emit({ type: "step", step: failed, status: "error" });
+        }
+        return { call, output };
+      }),
+    );
 
-
+    for (const { call, output } of results) {
       messages.push({
         role: "tool",
         tool_call_id: call.id,
-        content: output.slice(0, 24000) || "No results.",
+        content: output.slice(0, 12000) || "No results.",
       });
     }
   }
+
 
   const final = await chat({
     model: MODEL,

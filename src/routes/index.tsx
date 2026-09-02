@@ -604,30 +604,7 @@ function Index() {
                   <br />
                   <span className="text-gradient">Orin</span> finds the way.
                 </h2>
-                <form
-                  className="glass mt-8 flex items-center gap-3 rounded-full py-2.5 pl-5 pr-2.5"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void run(input, mode);
-                  }}
-                >
-                  <Search className="size-4 text-muted-foreground" />
-                  <input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                    placeholder="Ask Orin to search, research or do anything..."
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="grid size-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
-                    aria-label="Ask Orin"
-                  >
-                    {busy ? <Loader2 className="size-5 animate-spin" /> : <ArrowUp className="size-5" />}
-                  </button>
-                </form>
-                <div className="mt-6 flex flex-wrap gap-3">
+                <div className="mt-8 flex flex-wrap gap-3">
                   {chips.map(({ label, icon: Icon, prompt, mode: m }) => (
                     <button
                       key={label}
@@ -639,7 +616,6 @@ function Index() {
                     </button>
                   ))}
                 </div>
-                {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
               </div>
             </section>
 

@@ -535,33 +535,56 @@ function Index() {
               ))}
             </div>
 
-            <form
-              className="mt-auto rounded-2xl bg-white/60 p-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(input, mode);
-              }}
-            >
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                placeholder={`Ask Orin to ${mode}…`}
-              />
-              <div className="mt-6 flex items-center justify-end gap-3">
-                <span className="mr-auto rounded-full bg-white/70 px-3 py-1 text-[11px] font-medium capitalize text-muted-foreground">
-                  {mode}
-                </span>
+            <div className="rounded-2xl bg-white/60 p-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <Plug className="size-4 text-primary" /> Connectors
+              </h3>
+              <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
+                {["Gemini (brain)", "Firecrawl — live web", "Wikidata & Wikipedia", "GDELT — live news", "World Bank data", "SEC EDGAR filings", "U.S. Census data", "Tavily fallback search"].map((name) => (
+                  <li key={name} className="flex items-center gap-2">
+                    <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-2xl bg-white/60 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Mail className="size-4 text-primary" /> Background Jobs
+                </h3>
                 <button
-                  type="submit"
-                  disabled={busy}
-                  className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
-                  aria-label="Send"
+                  onClick={() => void refreshJobs()}
+                  className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-medium"
                 >
-                  {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+                  Refresh
                 </button>
               </div>
-            </form>
+              <ul className="mt-3 space-y-2">
+                {jobs.length ? (
+                  jobs.slice(0, 5).map((job) => (
+                    <li key={job.id} className="flex items-center gap-2 text-xs">
+                      <span
+                        className={`size-2 shrink-0 rounded-full ${
+                          job.status === "done"
+                            ? "bg-emerald-500"
+                            : job.status === "failed"
+                              ? "bg-destructive"
+                              : "animate-pulse bg-primary"
+                        }`}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">{job.prompt}</span>
+                      <span className="shrink-0 capitalize text-muted-foreground/70">{job.status}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-xs text-muted-foreground">
+                    No background jobs yet — start a task and leave the tab, Orin emails you the result.
+                  </li>
+                )}
+              </ul>
+            </div>
           </aside>
 
           {/* Main */}

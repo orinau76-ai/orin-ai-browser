@@ -343,8 +343,8 @@ function Index() {
   const active = turns.length > 0;
 
   return (
-    <div className="min-h-screen p-4 sm:p-8">
-      <div className="glass mx-auto max-w-[1500px] overflow-hidden rounded-3xl">
+    <div className="flex h-screen flex-col overflow-hidden p-4 sm:p-6">
+      <div className="glass mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-hidden rounded-3xl">
         {/* Browser chrome */}
         <header className="flex items-center gap-4 px-5 py-3">
           <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ function Index() {
           </button>
         </div>
 
-        <div className="flex gap-4 p-4">
+        <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4">
           {/* Rail */}
           <nav className="glass-soft flex w-16 shrink-0 flex-col items-center gap-2 rounded-3xl py-4">
             <span className="mb-2 text-sm font-semibold tracking-tight">Orin</span>
@@ -477,7 +477,7 @@ function Index() {
           </nav>
 
           {/* Assistant panel */}
-          <aside className="glass-soft flex w-[330px] shrink-0 flex-col gap-4 rounded-3xl p-5">
+          <aside className="glass-soft flex min-h-0 w-[330px] shrink-0 flex-col gap-4 overflow-y-auto rounded-3xl p-5">
             <div className="flex items-center gap-3">
               <span className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground">
                 <Compass className="size-5" />
@@ -535,37 +535,61 @@ function Index() {
               ))}
             </div>
 
-            <form
-              className="mt-auto rounded-2xl bg-white/60 p-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(input, mode);
-              }}
-            >
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                placeholder={`Ask Orin to ${mode}…`}
-              />
-              <div className="mt-6 flex items-center justify-end gap-3">
-                <span className="mr-auto rounded-full bg-white/70 px-3 py-1 text-[11px] font-medium capitalize text-muted-foreground">
-                  {mode}
-                </span>
+            <div className="rounded-2xl bg-white/60 p-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <Plug className="size-4 text-primary" /> Connectors
+              </h3>
+              <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
+                {["Gemini (brain)", "Firecrawl — live web", "Wikidata & Wikipedia", "GDELT — live news", "World Bank data", "SEC EDGAR filings", "U.S. Census data", "Tavily fallback search"].map((name) => (
+                  <li key={name} className="flex items-center gap-2">
+                    <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-2xl bg-white/60 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-semibold">
+                  <Mail className="size-4 text-primary" /> Background Jobs
+                </h3>
                 <button
-                  type="submit"
-                  disabled={busy}
-                  className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
-                  aria-label="Send"
+                  onClick={() => void refreshJobs()}
+                  className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-medium"
                 >
-                  {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+                  Refresh
                 </button>
               </div>
-            </form>
+              <ul className="mt-3 space-y-2">
+                {jobs.length ? (
+                  jobs.slice(0, 5).map((job) => (
+                    <li key={job.id} className="flex items-center gap-2 text-xs">
+                      <span
+                        className={`size-2 shrink-0 rounded-full ${
+                          job.status === "done"
+                            ? "bg-emerald-500"
+                            : job.status === "failed"
+                              ? "bg-destructive"
+                              : "animate-pulse bg-primary"
+                        }`}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">{job.prompt}</span>
+                      <span className="shrink-0 capitalize text-muted-foreground/70">{job.status}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-xs text-muted-foreground">
+                    No background jobs yet — start a task and leave the tab, Orin emails you the result.
+                  </li>
+                )}
+              </ul>
+            </div>
           </aside>
 
           {/* Main */}
-          <main className="flex min-w-0 flex-1 flex-col gap-4">
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
             <section className="glass-soft relative overflow-hidden rounded-3xl p-10">
               <img
                 src={heroRibbon}
@@ -580,30 +604,7 @@ function Index() {
                   <br />
                   <span className="text-gradient">Orin</span> finds the way.
                 </h2>
-                <form
-                  className="glass mt-8 flex items-center gap-3 rounded-full py-2.5 pl-5 pr-2.5"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void run(input, mode);
-                  }}
-                >
-                  <Search className="size-4 text-muted-foreground" />
-                  <input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                    placeholder="Ask Orin to search, research or do anything..."
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="grid size-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
-                    aria-label="Ask Orin"
-                  >
-                    {busy ? <Loader2 className="size-5 animate-spin" /> : <ArrowUp className="size-5" />}
-                  </button>
-                </form>
-                <div className="mt-6 flex flex-wrap gap-3">
+                <div className="mt-8 flex flex-wrap gap-3">
                   {chips.map(({ label, icon: Icon, prompt, mode: m }) => (
                     <button
                       key={label}
@@ -615,7 +616,6 @@ function Index() {
                     </button>
                   ))}
                 </div>
-                {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
               </div>
             </section>
 
@@ -881,6 +881,40 @@ function Index() {
             <p className="py-2 text-center text-sm text-muted-foreground">
               Orin AI Browser — Your AI-Powered Gateway to Everything 💗
             </p>
+            </div>
+
+            {/* Pinned composer — always visible at the bottom */}
+            <div className="w-full shrink-0 border-t border-border bg-background/70 p-4 backdrop-blur-xl">
+              {error ? (
+                <p className="mx-auto mb-2 max-w-3xl text-sm text-destructive">{error}</p>
+              ) : null}
+              <form
+                className="glass mx-auto flex w-full max-w-3xl items-center gap-3 rounded-full py-2.5 pl-5 pr-2.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(input, mode);
+                }}
+              >
+                <Search className="size-4 shrink-0 text-muted-foreground" />
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  placeholder={`Ask Orin to ${mode}…`}
+                />
+                <span className="shrink-0 rounded-full bg-white/70 px-3 py-1 text-[11px] font-medium capitalize text-muted-foreground">
+                  {mode}
+                </span>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
+                  aria-label="Send"
+                >
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
+                </button>
+              </form>
+            </div>
           </main>
         </div>
       </div>

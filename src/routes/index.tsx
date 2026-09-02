@@ -343,8 +343,8 @@ function Index() {
   const active = turns.length > 0;
 
   return (
-    <div className="min-h-screen p-4 sm:p-8">
-      <div className="glass mx-auto max-w-[1500px] overflow-hidden rounded-3xl">
+    <div className="flex h-screen flex-col overflow-hidden p-4 sm:p-6">
+      <div className="glass mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-hidden rounded-3xl">
         {/* Browser chrome */}
         <header className="flex items-center gap-4 px-5 py-3">
           <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ function Index() {
           </button>
         </div>
 
-        <div className="flex gap-4 p-4">
+        <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4">
           {/* Rail */}
           <nav className="glass-soft flex w-16 shrink-0 flex-col items-center gap-2 rounded-3xl py-4">
             <span className="mb-2 text-sm font-semibold tracking-tight">Orin</span>
@@ -477,7 +477,7 @@ function Index() {
           </nav>
 
           {/* Assistant panel */}
-          <aside className="glass-soft flex w-[330px] shrink-0 flex-col gap-4 rounded-3xl p-5">
+          <aside className="glass-soft flex min-h-0 w-[330px] shrink-0 flex-col gap-4 overflow-y-auto rounded-3xl p-5">
             <div className="flex items-center gap-3">
               <span className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground">
                 <Compass className="size-5" />

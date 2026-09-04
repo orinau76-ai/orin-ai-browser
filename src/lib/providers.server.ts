@@ -124,14 +124,35 @@ function specOf(id: ProviderId): ProviderSpec {
   return spec;
 }
 
+/**
+ * Extra env-var names that hold the same credential under a different label.
+ * Secrets are often saved as NAME_1, NAME_2 ... (one per key) or with a suffix.
+ */
+const SECRET_ALIASES: Record<string, string[]> = {
+  GOOGLE_SHEETS_ACCESS_TOKEN: ["GOOGLE_SHEETS_ACCESS_TOKEN_API"],
+  FCM_SERVER_KEY: ["FIREBASE_SERVICE_ACCOUNT", "FCM_SERVICE_ACCOUNT"],
+};
+
+function envNamesFor(base: string): string[] {
+  const names = [base, ...(SECRET_ALIASES[base] ?? [])];
+  for (const name of [...names]) {
+    for (let i = 1; i <= 8; i += 1) names.push(`${name}_${i}`);
+  }
+  return names;
+}
+
 function keyPool(spec: ProviderSpec): string[] {
   if (!spec.secret) return [];
-  const raw = process.env[spec.secret];
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((k) => k.trim())
-    .filter(Boolean);
+  const keys: string[] = [];
+  for (const name of envNamesFor(spec.secret)) {
+    const raw = process.env[name];
+    if (!raw) continue;
+    for (const part of raw.split(",")) {
+      const key = part.trim();
+      if (key && !keys.includes(key)) keys.push(key);
+    }
+  }
+  return keys;
 }
 
 export function isConfigured(id: ProviderId): boolean {

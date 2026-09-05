@@ -36,7 +36,13 @@ export async function enablePush(): Promise<PushStatus> {
     if (!(await messagingModule.isSupported())) return { status: "unsupported" };
 
     const messagingSenderId = config.appId.split(":")[1] ?? "";
-    const firebaseConfig = { ...config, messagingSenderId };
+    const firebaseConfig = {
+      apiKey: config.apiKey,
+      projectId: config.projectId,
+      appId: config.appId,
+      vapidKey: config.vapidKey,
+      messagingSenderId,
+    };
     const query = new URLSearchParams(firebaseConfig as Record<string, string>).toString();
     const registration = await navigator.serviceWorker.register(`/firebase-messaging-sw.js?${query}`);
     const messaging = messagingModule.getMessaging(appModule.initializeApp(firebaseConfig));

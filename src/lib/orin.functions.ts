@@ -132,3 +132,12 @@ export const setPrivateMode = createServerFn({ method: "POST" })
       );
     return { privateMode: data.privateMode };
   });
+
+/** Deletes every stored session (and its messages) for the signed-in user. */
+export const clearHistory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await context.supabase.from("messages").delete().eq("user_id", context.userId);
+    await context.supabase.from("sessions").delete().eq("user_id", context.userId);
+    return { ok: true };
+  });

@@ -77,6 +77,7 @@ export const Route = createFileRoute("/api/agent")({
                 prompt,
                 history,
                 privateMode,
+                signal: request.signal,
                 onEvent: (event) => send(event),
               });
 

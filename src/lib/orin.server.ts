@@ -1,4 +1,4 @@
-import { chat, type ChatMessage, type ToolDef } from "./gemini.server";
+import { chat, chatStream, type ChatMessage, type ToolDef } from "./gemini.server";
 import { mapSite, scrapePage, webSearch } from "./firecrawl.server";
 import {
   censusPopulation,

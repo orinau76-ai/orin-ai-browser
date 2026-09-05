@@ -297,6 +297,13 @@ export async function runAgent(options: {
               output = await secEdgar(String(args["query"] ?? ""));
             } else if (name === "us_census") {
               output = await censusPopulation(Number(args["year"] ?? 2022));
+            } else if (name === "browser_action") {
+              const { runBrowserAction } = await import("./browser.server");
+              output = await runBrowserAction(
+                String(args["action"] ?? "read"),
+                String(args["target"] ?? ""),
+                String(args["value"] ?? ""),
+              );
             } else {
               output = "Unknown tool.";
             }

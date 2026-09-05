@@ -1,0 +1,14 @@
+{
+  "name": "Orin AI Browser",
+  "short_name": "Orin",
+  "description": "Orin is an AI browser that searches, researches and runs real browser tasks for you.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d0a12",
+  "theme_color": "#0d0a12",
+  "icons": [
+    { "src": "/orin-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/orin-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

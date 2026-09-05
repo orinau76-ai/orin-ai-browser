@@ -1,4 +1,4 @@
-import { chat, type ChatMessage, type ToolDef } from "./gemini.server";
+import { chat, chatStream, type ChatMessage, type ToolDef } from "./gemini.server";
 import { mapSite, scrapePage, webSearch } from "./firecrawl.server";
 import {
   censusPopulation,
@@ -88,6 +88,24 @@ const tools: ToolDef[] = [
   simpleTool("us_census", "U.S. Census ACS population by state.", {
     year: { type: "number", description: "ACS year, default 2022" },
   }),
+  {
+    type: "function",
+    function: {
+      name: "browser_action",
+      description:
+        "Drive the remote browser session. action: navigate | read | screenshot. target must be a full http(s) URL. Observe the returned page content and verify the action before continuing.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string" },
+          target: { type: "string" },
+          value: { type: "string" },
+        },
+        required: ["action", "target"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 function simpleTool(
@@ -126,6 +144,10 @@ const prompts: Record<string, string> = {
     "You are Orin. Explain the topic or page clearly: start simple, then go deeper, use analogies, and end with 'Why it matters'.",
   agent:
     "You are Orin in Agent Mode: an autonomous multi-step operator. Plan, then use your tools repeatedly (search, read pages, map sites) until the task is genuinely complete. Verify with at least two independent sources before concluding. Finish with a markdown report: Plan, What I did, Findings, Result.",
+  automation:
+    "You are Orin in Automation Mode: you operate a remote browser. Plan the task, then use browser_action to navigate and read real pages, observing the result after every action and verifying it actually worked. If an action is unavailable or fails, say so plainly — never claim success you did not observe. Pause and ask for approval before purchases, sending messages, submitting important forms or anything irreversible. Finish with: Plan, Actions taken (with observed result of each), Verification, Result.",
+  spy:
+    "You are Orin in Spy Mode: competitive and company intelligence. Track what a company, product or person is doing right now using live news, filings, official pages and the open web. Cross-check every claim against at least two independent sources, separate confirmed facts from signals, and finish with: Snapshot, Recent moves, Signals, What it means. Never state an unverified rumour as fact.",
 };
 
 export function systemPrompt(mode: string, privateMode: boolean) {
@@ -139,7 +161,22 @@ export function systemPrompt(mode: string, privateMode: boolean) {
 export type AgentEvent =
   | { type: "phase"; label: string }
   | { type: "step"; step: Step; status: "start" | "done" | "error" }
+  | { type: "delta"; text: string }
   | { type: "source"; source: Source };
+
+// Step budgets are deliberately tight: every extra loop is another paid model
+// call and several more seconds of waiting.
+const budgets: Record<string, number> = {
+  search: 3,
+  summarize: 3,
+  explain: 3,
+  extract: 4,
+  compare: 5,
+  research: 5,
+  spy: 6,
+  automation: 8,
+  agent: 8,
+};
 
 export async function runAgent(options: {
   mode: string;
@@ -147,6 +184,7 @@ export async function runAgent(options: {
   history: { role: "user" | "assistant"; content: string }[];
   privateMode: boolean;
   maxSteps?: number;
+  signal?: AbortSignal;
   onEvent?: (event: AgentEvent) => void;
 }): Promise<AgentResult> {
   const emit = options.onEvent ?? (() => {});
@@ -158,12 +196,20 @@ export async function runAgent(options: {
 
   const sources = new Map<string, Source>();
   const steps: Step[] = [];
-  const maxSteps = options.maxSteps ?? (options.mode === "agent" ? 10 : 6);
+  const maxSteps = options.maxSteps ?? budgets[options.mode] ?? 5;
 
   emit({ type: "phase", label: "Planning the task" });
 
   for (let i = 0; i < maxSteps; i++) {
-    const reply = await chat({ model: MODEL, messages, tools });
+    const reply = await chatStream(
+      {
+        model: MODEL,
+        messages,
+        tools,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+      (text) => emit({ type: "delta", text }),
+    );
     messages.push(reply);
 
     const calls = reply.tool_calls ?? [];
@@ -189,6 +235,7 @@ export async function runAgent(options: {
           world_bank: "World Bank",
           sec_edgar: "SEC EDGAR",
           us_census: "US Census",
+          browser_action: "Browser",
         };
         const label =
           call.function.name === "web_search"
@@ -199,7 +246,7 @@ export async function runAgent(options: {
                 ? { tool: "Map", detail: String(args["url"] ?? "") }
                 : {
                     tool: dataLabels[call.function.name] ?? call.function.name,
-                    detail: String(args["query"] ?? args["title"] ?? args["country"] ?? "live data"),
+                    detail: String(args["query"] ?? args["title"] ?? args["target"] ?? args["country"] ?? "live data"),
                   };
 
         emit({ type: "step", step: label, status: "start" });
@@ -251,6 +298,13 @@ export async function runAgent(options: {
               output = await secEdgar(String(args["query"] ?? ""));
             } else if (name === "us_census") {
               output = await censusPopulation(Number(args["year"] ?? 2022));
+            } else if (name === "browser_action") {
+              const { runBrowserAction } = await import("./browser.server");
+              output = await runBrowserAction(
+                String(args["action"] ?? "read"),
+                String(args["target"] ?? ""),
+                String(args["value"] ?? ""),
+              );
             } else {
               output = "Unknown tool.";
             }

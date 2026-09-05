@@ -235,6 +235,7 @@ export async function runAgent(options: {
           world_bank: "World Bank",
           sec_edgar: "SEC EDGAR",
           us_census: "US Census",
+          browser_action: "Browser",
         };
         const label =
           call.function.name === "web_search"
@@ -245,7 +246,7 @@ export async function runAgent(options: {
                 ? { tool: "Map", detail: String(args["url"] ?? "") }
                 : {
                     tool: dataLabels[call.function.name] ?? call.function.name,
-                    detail: String(args["query"] ?? args["title"] ?? args["country"] ?? "live data"),
+                    detail: String(args["query"] ?? args["title"] ?? args["target"] ?? args["country"] ?? "live data"),
                   };
 
         emit({ type: "step", step: label, status: "start" });

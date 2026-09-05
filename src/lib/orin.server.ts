@@ -88,6 +88,24 @@ const tools: ToolDef[] = [
   simpleTool("us_census", "U.S. Census ACS population by state.", {
     year: { type: "number", description: "ACS year, default 2022" },
   }),
+  {
+    type: "function",
+    function: {
+      name: "browser_action",
+      description:
+        "Drive the remote browser session. action: navigate | read | screenshot. target must be a full http(s) URL. Observe the returned page content and verify the action before continuing.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string" },
+          target: { type: "string" },
+          value: { type: "string" },
+        },
+        required: ["action", "target"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 function simpleTool(

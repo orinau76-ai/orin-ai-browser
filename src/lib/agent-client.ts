@@ -5,6 +5,7 @@ export type StreamEvent =
   | { type: "session"; sessionId: string | null; privateMode: boolean }
   | { type: "phase"; label: string }
   | { type: "step"; step: { tool: string; detail: string }; status: LiveStep["status"] }
+  | { type: "delta"; text: string }
   | { type: "source"; source: { url: string; title: string } }
   | {
       type: "done";

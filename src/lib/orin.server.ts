@@ -143,7 +143,22 @@ export function systemPrompt(mode: string, privateMode: boolean) {
 export type AgentEvent =
   | { type: "phase"; label: string }
   | { type: "step"; step: Step; status: "start" | "done" | "error" }
+  | { type: "delta"; text: string }
   | { type: "source"; source: Source };
+
+// Step budgets are deliberately tight: every extra loop is another paid model
+// call and several more seconds of waiting.
+const budgets: Record<string, number> = {
+  search: 3,
+  summarize: 3,
+  explain: 3,
+  extract: 4,
+  compare: 5,
+  research: 5,
+  spy: 6,
+  automation: 8,
+  agent: 8,
+};
 
 export async function runAgent(options: {
   mode: string;
@@ -151,6 +166,7 @@ export async function runAgent(options: {
   history: { role: "user" | "assistant"; content: string }[];
   privateMode: boolean;
   maxSteps?: number;
+  signal?: AbortSignal;
   onEvent?: (event: AgentEvent) => void;
 }): Promise<AgentResult> {
   const emit = options.onEvent ?? (() => {});
@@ -162,12 +178,20 @@ export async function runAgent(options: {
 
   const sources = new Map<string, Source>();
   const steps: Step[] = [];
-  const maxSteps = options.maxSteps ?? (options.mode === "agent" ? 10 : 6);
+  const maxSteps = options.maxSteps ?? budgets[options.mode] ?? 5;
 
   emit({ type: "phase", label: "Planning the task" });
 
   for (let i = 0; i < maxSteps; i++) {
-    const reply = await chat({ model: MODEL, messages, tools });
+    const reply = await chatStream(
+      {
+        model: MODEL,
+        messages,
+        tools,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+      (text) => emit({ type: "delta", text }),
+    );
     messages.push(reply);
 
     const calls = reply.tool_calls ?? [];

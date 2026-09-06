@@ -26,6 +26,24 @@ const tools: ToolDef[] = [
   {
     type: "function",
     function: {
+      name: "research_scan",
+      description:
+        "PREFERRED first tool for any research, comparison or briefing task. Runs Orin's RAG pipeline: scans many indexers at once (live web, news, encyclopedic, fallback search), reads the best pages as text, then returns ranked passages each tagged with a strict [S#] source id. One call replaces several searches and page reads. Cite only [S#] ids that appear in the returned pack.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "What to scan the web for" },
+          breadth: { type: "number", description: "How many documents to index, 3-10 (default 8)" },
+          depth: { type: "number", description: "How many pages to read in full, 0-6 (default 4)" },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "web_search",
       description: "Search the live web and return ranked results with titles, urls and snippets.",
       parameters: {
@@ -39,6 +57,7 @@ const tools: ToolDef[] = [
       },
     },
   },
+
   {
     type: "function",
     function: {

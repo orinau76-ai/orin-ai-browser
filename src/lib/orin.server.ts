@@ -257,7 +257,9 @@ export async function runAgent(options: {
           browser_action: "Browser",
         };
         const label =
-          call.function.name === "web_search"
+          call.function.name === "research_scan"
+            ? { tool: "Scan", detail: String(args["query"] ?? "") }
+            : call.function.name === "web_search"
             ? { tool: "Search", detail: String(args["query"] ?? "") }
             : call.function.name === "read_page"
               ? { tool: "Read", detail: String(args["url"] ?? "") }
@@ -271,7 +273,26 @@ export async function runAgent(options: {
         emit({ type: "step", step: label, status: "start" });
         let output = "";
         try {
-          if (call.function.name === "web_search") {
+          if (call.function.name === "research_scan") {
+            const query = String(args["query"] ?? "");
+            const { scan } = await import("./rag.server");
+            const result = await scan(query, {
+              ...(args["breadth"] !== undefined ? { breadth: Number(args["breadth"]) } : {}),
+              ...(args["depth"] !== undefined ? { depth: Number(args["depth"]) } : {}),
+            });
+            result.sources.forEach((s) => {
+              sources.set(s.url, s);
+              emit({ type: "source", source: s });
+            });
+            const done = {
+              tool: "Scan",
+              detail: `${query} — ${result.passages.length} passages · ${result.sources.length} sources · ${result.indexers.join(", ") || "no indexer"}`,
+            };
+            steps.push(done);
+            emit({ type: "step", step: done, status: "done" });
+            output = result.evidence;
+          } else if (call.function.name === "web_search") {
+
             const query = String(args["query"] ?? "");
             const hits = await webSearch(query, Number(args["limit"] ?? 5));
             hits.forEach((h) => {

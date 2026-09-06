@@ -26,6 +26,24 @@ const tools: ToolDef[] = [
   {
     type: "function",
     function: {
+      name: "research_scan",
+      description:
+        "PREFERRED first tool for any research, comparison or briefing task. Runs Orin's RAG pipeline: scans many indexers at once (live web, news, encyclopedic, fallback search), reads the best pages as text, then returns ranked passages each tagged with a strict [S#] source id. One call replaces several searches and page reads. Cite only [S#] ids that appear in the returned pack.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "What to scan the web for" },
+          breadth: { type: "number", description: "How many documents to index, 3-10 (default 8)" },
+          depth: { type: "number", description: "How many pages to read in full, 0-6 (default 4)" },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "web_search",
       description: "Search the live web and return ranked results with titles, urls and snippets.",
       parameters: {
@@ -39,6 +57,7 @@ const tools: ToolDef[] = [
       },
     },
   },
+
   {
     type: "function",
     function: {
@@ -131,32 +150,36 @@ function simpleTool(
 
 const prompts: Record<string, string> = {
   research:
-    "You are Orin, an autonomous research agent. Always search the live web before answering, read the most relevant pages, cross-check facts, and produce a structured markdown briefing with headings, key findings and a short conclusion. Cite claims inline as [n] matching the sources you used.",
+    "You are Orin, an autonomous research agent. Start with research_scan — one call indexes many sources at once. Widen with a second scan or read_page only if a real gap remains. Produce a structured markdown briefing with headings, key findings and a short conclusion.",
   search:
-    "You are Orin, an AI search engine. Search the web, then answer concisely and directly in markdown with inline [n] citations.",
+    "You are Orin, an AI search engine. Run one research_scan, then answer concisely and directly in markdown.",
   summarize:
     "You are Orin. Read the page(s) the user gives you (use read_page) and produce a tight summary: a one-line TL;DR, 5-7 bullet key points, and any numbers or dates that matter.",
   compare:
-    "You are Orin. Research each option with searches and page reads, then output a markdown comparison table followed by a clear recommendation and who each option suits.",
+    "You are Orin. Scan each option with research_scan, then output a markdown comparison table followed by a clear recommendation and who each option suits.",
   extract:
     "You are Orin, a data extraction agent. Read the given page(s) and return the requested structured data as a clean markdown table. Never invent values; use '—' when a field is absent.",
   explain:
     "You are Orin. Explain the topic or page clearly: start simple, then go deeper, use analogies, and end with 'Why it matters'.",
   agent:
-    "You are Orin in Agent Mode: an autonomous multi-step operator. Plan, then use your tools repeatedly (search, read pages, map sites) until the task is genuinely complete. Verify with at least two independent sources before concluding. Finish with a markdown report: Plan, What I did, Findings, Result.",
+    "You are Orin in Agent Mode: an autonomous multi-step operator. Plan, lead with research_scan, then use your other tools until the task is genuinely complete. Verify with at least two independent sources before concluding. Finish with a markdown report: Plan, What I did, Findings, Result.",
   automation:
     "You are Orin in Automation Mode: you operate a remote browser. Plan the task, then use browser_action to navigate and read real pages, observing the result after every action and verifying it actually worked. If an action is unavailable or fails, say so plainly — never claim success you did not observe. Pause and ask for approval before purchases, sending messages, submitting important forms or anything irreversible. Finish with: Plan, Actions taken (with observed result of each), Verification, Result.",
   spy:
-    "You are Orin in Spy Mode: competitive and company intelligence. Track what a company, product or person is doing right now using live news, filings, official pages and the open web. Cross-check every claim against at least two independent sources, separate confirmed facts from signals, and finish with: Snapshot, Recent moves, Signals, What it means. Never state an unverified rumour as fact.",
+    "You are Orin in Spy Mode: competitive and company intelligence. Lead with research_scan, then add news, filings and official pages. Cross-check every claim against at least two independent sources, separate confirmed facts from signals, and finish with: Snapshot, Recent moves, Signals, What it means. Never state an unverified rumour as fact.",
 };
+
 
 export function systemPrompt(mode: string, privateMode: boolean) {
   const base = prompts[mode] ?? prompts["research"]!;
   const privacy = privateMode
     ? " Private Mode is on: nothing is stored, and all web access is proxied server-side. Do not ask for or retain personal data."
     : "";
-  return `${base}${privacy} Today's date is ${new Date().toISOString().slice(0, 10)}. Use markdown. End with a "Sources" list of the urls you actually used.`;
+  const sourcing =
+    " STRICT SOURCE MAPPING: every factual sentence must cite the exact [S#] id of the passage it came from, and only ids that appear in an evidence pack you actually received. Never merge two sources under one id, never cite an id you were not given, and never state something no passage supports — write 'not found in the evidence' instead. Work from indexed text only; do not wait on or describe rendered browser views unless you are in Automation Mode.";
+  return `${base}${privacy}${sourcing} Today's date is ${new Date().toISOString().slice(0, 10)}. Use markdown. End with a "Sources" list mapping each [S#] to its url.`;
 }
+
 
 export type AgentEvent =
   | { type: "phase"; label: string }
@@ -167,13 +190,13 @@ export type AgentEvent =
 // Step budgets are deliberately tight: every extra loop is another paid model
 // call and several more seconds of waiting.
 const budgets: Record<string, number> = {
-  search: 3,
+  search: 2,
   summarize: 3,
   explain: 3,
   extract: 4,
-  compare: 5,
-  research: 5,
-  spy: 6,
+  compare: 4,
+  research: 4,
+  spy: 5,
   automation: 8,
   agent: 8,
 };
@@ -238,7 +261,9 @@ export async function runAgent(options: {
           browser_action: "Browser",
         };
         const label =
-          call.function.name === "web_search"
+          call.function.name === "research_scan"
+            ? { tool: "Scan", detail: String(args["query"] ?? "") }
+            : call.function.name === "web_search"
             ? { tool: "Search", detail: String(args["query"] ?? "") }
             : call.function.name === "read_page"
               ? { tool: "Read", detail: String(args["url"] ?? "") }
@@ -252,7 +277,26 @@ export async function runAgent(options: {
         emit({ type: "step", step: label, status: "start" });
         let output = "";
         try {
-          if (call.function.name === "web_search") {
+          if (call.function.name === "research_scan") {
+            const query = String(args["query"] ?? "");
+            const { scan } = await import("./rag.server");
+            const result = await scan(query, {
+              ...(args["breadth"] !== undefined ? { breadth: Number(args["breadth"]) } : {}),
+              ...(args["depth"] !== undefined ? { depth: Number(args["depth"]) } : {}),
+            });
+            result.sources.forEach((s) => {
+              sources.set(s.url, s);
+              emit({ type: "source", source: s });
+            });
+            const done = {
+              tool: "Scan",
+              detail: `${query} — ${result.passages.length} passages · ${result.sources.length} sources · ${result.indexers.join(", ") || "no indexer"}`,
+            };
+            steps.push(done);
+            emit({ type: "step", step: done, status: "done" });
+            output = result.evidence;
+          } else if (call.function.name === "web_search") {
+
             const query = String(args["query"] ?? "");
             const hits = await webSearch(query, Number(args["limit"] ?? 5));
             hits.forEach((h) => {
@@ -325,7 +369,9 @@ export async function runAgent(options: {
       messages.push({
         role: "tool",
         tool_call_id: call.id,
-        content: output.slice(0, 12000) || "No results.",
+        content:
+          output.slice(0, call.function.name === "research_scan" ? 18000 : 12000) || "No results.",
+
       });
     }
   }

@@ -365,7 +365,9 @@ export async function runAgent(options: {
       messages.push({
         role: "tool",
         tool_call_id: call.id,
-        content: output.slice(0, 12000) || "No results.",
+        content:
+          output.slice(0, call.function.name === "research_scan" ? 18000 : 12000) || "No results.",
+
       });
     }
   }

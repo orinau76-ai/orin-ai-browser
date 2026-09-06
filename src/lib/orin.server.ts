@@ -190,13 +190,13 @@ export type AgentEvent =
 // Step budgets are deliberately tight: every extra loop is another paid model
 // call and several more seconds of waiting.
 const budgets: Record<string, number> = {
-  search: 3,
+  search: 2,
   summarize: 3,
   explain: 3,
   extract: 4,
-  compare: 5,
-  research: 5,
-  spy: 6,
+  compare: 4,
+  research: 4,
+  spy: 5,
   automation: 8,
   agent: 8,
 };

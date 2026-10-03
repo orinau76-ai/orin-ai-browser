@@ -41,7 +41,8 @@ import {
   Mail,
   Plug,
   CheckCircle2,
-
+  Eye,
+  Download,
 } from "lucide-react";
 import heroRibbon from "@/assets/hero-ribbon.jpg";
 import weatherBg from "@/assets/weather-bg.jpg";
@@ -50,6 +51,7 @@ import { OrinMarkdown } from "@/components/orin-markdown";
 import { streamAgent, type LiveStep } from "@/lib/agent-client";
 import { listJobs, queueBackgroundJob } from "@/lib/jobs.functions";
 import {
+  clearHistory,
   deleteSession,
   getSession,
   getSettings,
@@ -82,7 +84,15 @@ export const Route = createFileRoute("/")({
 
 const sideIcons = [Home, Star, Layers, Clock, History, FileText];
 
-type Mode = "search" | "research" | "summarize" | "compare" | "extract" | "explain" | "agent";
+type Mode = "search" | "research" | "summarize" | "compare" | "extract" | "explain" | "agent" | "automation" | "spy";
+
+const PUBLISHED_URL = "https://orin-ai-browser.lovable.app";
+
+const quickModes: { label: string; mode: Mode; icon: typeof Search }[] = [
+  { label: "Research", mode: "research", icon: Search },
+  { label: "Automation", mode: "automation", icon: Bot },
+  { label: "Spy", mode: "spy", icon: Eye },
+];
 
 const actions: { title: string; sub: string; icon: typeof Search; tint: string; mode: Mode }[] = [
   { title: "Research", sub: "Deep research on any topic", icon: Search, tint: "from-primary to-primary-glow", mode: "research" },
@@ -168,7 +178,23 @@ function Index() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [handoff, setHandoff] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const installPrompt = useRef<{ prompt: () => Promise<void> } | null>(null);
+  const [liveText, setLiveText] = useState("");
   const activeTask = useRef<{ prompt: string; mode: Mode } | null>(null);
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      installPrompt.current = e as unknown as { prompt: () => Promise<void> };
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    if ("serviceWorker" in navigator && window.self === window.top) {
+      void navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+  }, []);
 
   const refreshSessions = useCallback(async () => {
     if (!user) return;

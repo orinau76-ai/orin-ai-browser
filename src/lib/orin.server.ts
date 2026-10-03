@@ -190,15 +190,15 @@ export type AgentEvent =
 // Step budgets are deliberately tight: every extra loop is another paid model
 // call and several more seconds of waiting.
 const budgets: Record<string, number> = {
-  search: 2,
-  summarize: 3,
-  explain: 3,
-  extract: 4,
-  compare: 4,
-  research: 4,
-  spy: 5,
-  automation: 8,
-  agent: 8,
+  search: 4,
+  summarize: 6,
+  explain: 6,
+  extract: 8,
+  compare: 8,
+  research: 10,
+  spy: 12,
+  automation: 20,
+  agent: 20,
 };
 
 export async function runAgent(options: {

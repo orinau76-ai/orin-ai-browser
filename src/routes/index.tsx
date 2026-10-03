@@ -249,63 +249,103 @@ function Index() {
         return;
       }
       activeTask.current = { prompt, mode: runMode };
+      const controller = new AbortController();
+      abortRef.current = controller;
       setBusy(true);
       setError(null);
       setHandoff(null);
       setLiveSteps([]);
       setLiveSources([]);
+      setLiveText("");
       setPhase("Connecting to Orin");
       setMode(runMode);
       setTurns((prev) => [...prev, { role: "user", content: prompt }]);
       setInput("");
-      requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }));
+      let gotDone = false;
       try {
-        await streamAgent({ prompt, mode: runMode, sessionId }, (event) => {
-          if (event.type === "session") setSessionId(event.sessionId);
-          else if (event.type === "phase") setPhase(event.label);
-          else if (event.type === "source")
-            setLiveSources((prev) =>
-              prev.some((s) => s.url === event.source.url) ? prev : [...prev, event.source],
-            );
-          else if (event.type === "step") {
-            setPhase(`${event.step.tool}: ${event.step.detail}`.slice(0, 90));
-            setLiveSteps((prev) => {
-              const idx = prev.findIndex(
-                (s) => s.tool === event.step.tool && s.detail === event.step.detail,
+        await streamAgent(
+          { prompt, mode: runMode, sessionId },
+          (event) => {
+            if (event.type === "session") setSessionId(event.sessionId);
+            else if (event.type === "phase") setPhase(event.label);
+            else if (event.type === "delta") setLiveText((t) => t + event.text);
+            else if (event.type === "source")
+              setLiveSources((prev) =>
+                prev.some((s) => s.url === event.source.url) ? prev : [...prev, event.source],
               );
-              const next: LiveStep = { ...event.step, status: event.status };
-              if (idx === -1) return [...prev, next];
-              const copy = [...prev];
-              copy[idx] = next;
-              return copy;
-            });
-          } else if (event.type === "done") {
-            setSessionId(event.sessionId);
-            setTurns((prev) => [
-              ...prev,
-              {
-                role: "assistant",
-                content: event.answer,
-                sources: event.sources,
-                steps: event.steps,
-              },
-            ]);
-            void refreshSessions();
-          } else if (event.type === "error") {
-            setError(event.message);
-          }
-        });
+            else if (event.type === "step") {
+              if (event.status === "start") setLiveText("");
+              setPhase(`${event.step.tool}: ${event.step.detail}`.slice(0, 90));
+              setLiveSteps((prev) => {
+                const idx = prev.findIndex(
+                  (s) => s.tool === event.step.tool && s.detail === event.step.detail,
+                );
+                const next: LiveStep = { ...event.step, status: event.status };
+                if (idx === -1) return [...prev, next];
+                const copy = [...prev];
+                copy[idx] = next;
+                return copy;
+              });
+            } else if (event.type === "done") {
+              gotDone = true;
+              setSessionId(event.sessionId);
+              setTurns((prev) => [
+                ...prev,
+                { role: "assistant", content: event.answer, sources: event.sources, steps: event.steps },
+              ]);
+              void refreshSessions();
+            } else if (event.type === "error") {
+              setError(event.message);
+            }
+          },
+          controller.signal,
+        );
+        if (!gotDone && !controller.signal.aborted) {
+          setError("The connection dropped before Orin finished. Please try again.");
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Orin could not complete that.");
+        if (controller.signal.aborted) {
+          setTurns((prev) => [...prev, { role: "assistant", content: "_Stopped._" }]);
+        } else {
+          setError(err instanceof Error ? err.message : "Orin could not complete that.");
+        }
       } finally {
         activeTask.current = null;
+        abortRef.current = null;
         setBusy(false);
         setPhase("");
+        setLiveText("");
         void refreshJobs();
       }
     },
     [busy, sessionId, user, refreshSessions, refreshJobs],
   );
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ block: "end" });
+  }, [turns, liveText, liveSteps.length, busy]);
+
+  async function wipeHistory() {
+    if (!confirm("Delete all your Orin history?")) return;
+    try {
+      await clearHistory();
+      setSessions([]);
+      setTurns([]);
+      setSessionId(null);
+    } catch {
+      setError("Could not clear history.");
+    }
+  }
+
+  async function install() {
+    const p = installPrompt.current;
+    if (p) {
+      await p.prompt();
+      installPrompt.current = null;
+    } else {
+      window.open(PUBLISHED_URL, "_blank", "noopener");
+    }
+  }
 
 
   async function openSession(id: string) {

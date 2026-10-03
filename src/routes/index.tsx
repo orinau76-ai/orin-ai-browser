@@ -406,73 +406,231 @@ function Index() {
     }
   }
 
-  const active = turns.length > 0;
+  const active = turns.length > 0 || busy;
+
+  const modeToggles = (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {quickModes.map(({ label, mode: m, icon: Icon }) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => setMode(m)}
+          aria-pressed={mode === m}
+          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            mode === m
+              ? "bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)]"
+              : "bg-white/60 text-muted-foreground hover:bg-white/80"
+          }`}
+        >
+          <Icon className="size-3.5" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const composer = (
+    <div className="w-full shrink-0 border-t border-border bg-background/70 px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur-xl sm:p-4">
+      <div className="mx-auto max-w-3xl">
+        {error ? <p className="mb-2 text-sm text-destructive">{error}</p> : null}
+        <div className="mb-2">{modeToggles}</div>
+        <form
+          className="glass flex w-full items-center gap-2 rounded-full py-2 pl-4 pr-2 sm:gap-3 sm:pl-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(input, mode);
+          }}
+        >
+          <Search className="size-4 shrink-0 text-muted-foreground" />
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
+            placeholder="Search, research, or give Orin a task…"
+          />
+          {busy ? (
+            <button
+              type="button"
+              onClick={() => abortRef.current?.abort()}
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-foreground px-4 text-xs font-semibold text-background"
+              aria-label="Cancel"
+            >
+              <Square className="size-3.5 fill-current" /> Cancel
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)]"
+              aria-label="Send"
+            >
+              <ArrowUp className="size-4" />
+            </button>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+
+  if (active) {
+    return (
+      <div className="flex h-[100dvh] flex-col overflow-hidden">
+        <header className="flex shrink-0 items-center gap-2 border-b border-border bg-background/70 px-3 py-2.5 backdrop-blur-xl sm:px-5">
+          <button
+            onClick={() => {
+              if (busy) abortRef.current?.abort();
+              setTurns([]);
+              setSessionId(null);
+            }}
+            className="rounded-full p-2 hover:bg-secondary"
+            aria-label="Back to home"
+          >
+            <ArrowLeft className="size-4" />
+          </button>
+          <span className="font-semibold tracking-tight">Orin</span>
+          <span className="rounded-full bg-white/70 px-2.5 py-0.5 text-[11px] font-medium capitalize text-muted-foreground">
+            {mode}
+          </span>
+          {privateMode ? (
+            <span className="hidden rounded-full bg-emerald-400/20 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 sm:inline">
+              Private — not saved
+            </span>
+          ) : null}
+          <button
+            onClick={() => {
+              if (busy) abortRef.current?.abort();
+              setTurns([]);
+              setSessionId(null);
+            }}
+            className="ml-auto flex items-center gap-1.5 rounded-full bg-white/70 px-3 py-1.5 text-xs font-medium"
+          >
+            <Plus className="size-3.5" /> New
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl space-y-5 px-3 py-5 sm:px-6">
+            {turns.map((turn, i) =>
+              turn.role === "user" ? (
+                <div key={i} className="ml-auto max-w-[85%] rounded-2xl bg-foreground px-4 py-3 text-sm text-background">
+                  {turn.content}
+                </div>
+              ) : (
+                <article key={i} className="min-w-0">
+                  <OrinMarkdown text={turn.content} />
+                  {turn.sources?.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {turn.sources.map((source) => (
+                        <a
+                          key={source.url}
+                          href={source.url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="max-w-[240px] truncate rounded-full bg-white/70 px-3 py-1 text-[11px] text-primary hover:underline"
+                        >
+                          {source.title}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ),
+            )}
+
+            {busy ? (
+              <div className="space-y-3">
+                <div className="glass-soft rounded-2xl p-4">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold">{phase || "Orin is working"}</p>
+                    <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium tabular-nums text-muted-foreground">
+                      {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
+                    </span>
+                  </div>
+                  {liveSteps.length ? (
+                    <ol className="mt-3 space-y-2">
+                      {liveSteps.map((step, i) => (
+                        <li key={`${step.tool}-${i}`} className="flex items-center gap-2 text-xs">
+                          <span
+                            className={`size-2 shrink-0 rounded-full ${
+                              step.status === "error"
+                                ? "bg-destructive"
+                                : step.status === "done"
+                                  ? "bg-emerald-500"
+                                  : "animate-pulse bg-primary"
+                            }`}
+                          />
+                          <span className="font-medium">{step.tool}</span>
+                          <span className="min-w-0 truncate text-muted-foreground">{step.detail}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                  {liveSources.length ? (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {liveSources.slice(-10).map((source) => (
+                        <span key={source.url} className="rounded-full bg-white/80 px-2.5 py-0.5 text-[11px] text-muted-foreground">
+                          {(() => {
+                            try {
+                              return new URL(source.url).hostname.replace("www.", "");
+                            } catch {
+                              return source.title;
+                            }
+                          })()}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {handoff ? (
+                    <p className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <Mail className="size-3.5" /> Safe to leave — Orin emails {handoff} when done.
+                    </p>
+                  ) : null}
+                </div>
+                {liveText ? <OrinMarkdown text={liveText} /> : null}
+              </div>
+            ) : null}
+            <div ref={chatEndRef} />
+          </div>
+        </div>
+        {composer}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden p-4 sm:p-6">
-      <div className="glass mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-hidden rounded-3xl">
-        {/* Browser chrome */}
-        <header className="flex items-center gap-4 px-5 py-3">
-          <div className="flex items-center gap-2">
+    <div className="flex h-[100dvh] flex-col overflow-hidden p-0 sm:p-6">
+      <div className="glass mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-hidden sm:rounded-3xl">
+        <header className="flex items-center gap-2 px-3 py-3 sm:gap-4 sm:px-5">
+          <div className="hidden items-center gap-2 sm:flex">
             <span className="size-3 rounded-full bg-primary" />
             <span className="size-3 rounded-full bg-amber-400" />
             <span className="size-3 rounded-full bg-amber-300" />
           </div>
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <button className="rounded-full p-1.5 hover:bg-secondary" aria-label="Back">
-              <ArrowLeft className="size-4" />
-            </button>
-            <button className="rounded-full p-1.5 hover:bg-secondary" aria-label="Forward">
-              <ArrowRight className="size-4" />
-            </button>
-            <button
-              className="rounded-full p-1.5 hover:bg-secondary"
-              aria-label="Reload"
-              onClick={() => {
-                setTurns([]);
-                setSessionId(null);
-              }}
-            >
-              <RotateCw className="size-4" />
-            </button>
-          </div>
-          <form
-            className="glass-soft mx-auto flex w-full max-w-2xl items-center gap-3 rounded-full px-4 py-2.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(input, mode);
-            }}
-          >
+          <span className="font-semibold tracking-tight sm:hidden">Orin</span>
+          <div className="mx-auto hidden w-full max-w-2xl items-center gap-3 rounded-full px-4 py-2.5 md:flex glass-soft">
             <Search className="size-4 text-muted-foreground" />
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              placeholder="Search, enter a URL, or ask Orin"
-            />
-            <Sparkles className="size-4 text-primary" />
-          </form>
-          <div className="ml-auto flex items-center gap-2 text-muted-foreground">
+            <span className="text-sm text-muted-foreground">Orin AI Browser</span>
+          </div>
+          <div className="ml-auto flex items-center gap-1.5 text-muted-foreground sm:gap-2">
+            <button
+              onClick={() => void install()}
+              className="flex items-center gap-1.5 rounded-full bg-white/60 px-3 py-1.5 text-xs font-medium"
+              title="Install Orin as an app"
+            >
+              <Download className="size-4" /> <span className="hidden sm:inline">Install</span>
+            </button>
             <button
               onClick={() => void togglePrivate()}
               disabled={!user}
               className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 privateMode ? "bg-emerald-400/25 text-emerald-700" : "bg-white/60"
               } disabled:opacity-50`}
-              title="Private Mode: requests are proxied server-side and nothing is saved"
             >
               {privateMode ? <ShieldCheck className="size-4" /> : <Shield className="size-4" />}
-              {privateMode ? "Private On" : "Private Off"}
-            </button>
-            <button className="rounded-full p-2 hover:bg-secondary" aria-label="Bookmarks">
-              <Star className="size-4" />
+              <span className="hidden sm:inline">{privateMode ? "Private On" : "Private Off"}</span>
             </button>
             {user ? (
-              <button
-                onClick={() => void signOut()}
-                className="rounded-full p-2 hover:bg-secondary"
-                aria-label="Sign out"
-              >
+              <button onClick={() => void signOut()} className="rounded-full p-2 hover:bg-secondary" aria-label="Sign out">
                 <LogOut className="size-4" />
               </button>
             ) : (
@@ -483,67 +641,28 @@ function Index() {
                 Sign in
               </Link>
             )}
-            <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground">
-              <Sparkles className="size-4" />
-            </span>
           </div>
         </header>
 
-        {/* Tab strip */}
-        <div className="flex items-end gap-1 px-4">
-          <div className="glass-soft flex min-w-56 items-center gap-2 rounded-t-2xl px-4 py-3 text-sm font-medium">
-            <span className="size-2.5 rounded-full bg-primary" />
-            New Tab
-            <X className="ml-auto size-4 text-muted-foreground" />
-          </div>
-          {tabs.map((t) => (
-            <div
-              key={t.label}
-              className="flex min-w-48 items-center gap-2 rounded-t-2xl px-4 py-3 text-sm text-muted-foreground hover:bg-white/25"
-            >
-              <span className="size-2.5 rounded-full bg-accent-foreground/25" />
-              {t.label}
-            </div>
-          ))}
-          <button className="mb-1 rounded-full p-2 text-muted-foreground hover:bg-secondary" aria-label="New tab">
-            <Plus className="size-4" />
-          </button>
-        </div>
-
-        <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4">
-          {/* Rail */}
-          <nav className="glass-soft flex w-16 shrink-0 flex-col items-center gap-2 rounded-3xl py-4">
+        <div className="flex min-h-0 flex-1 gap-4 overflow-hidden px-2 pb-0 sm:p-4">
+          <nav className="glass-soft hidden w-16 shrink-0 flex-col items-center gap-2 rounded-3xl py-4 md:flex">
             <span className="mb-2 text-sm font-semibold tracking-tight">Orin</span>
             {sideIcons.map((Icon, i) => (
-              <button
+              <span
                 key={i}
-                aria-label="Rail item"
-                className={`grid size-10 place-items-center rounded-2xl transition-colors ${
-                  i === 0
-                    ? "bg-white/80 text-primary shadow-[var(--shadow-soft)]"
-                    : "text-muted-foreground hover:bg-white/50"
+                className={`grid size-10 place-items-center rounded-2xl ${
+                  i === 0 ? "bg-white/80 text-primary shadow-[var(--shadow-soft)]" : "text-muted-foreground"
                 }`}
               >
                 <Icon className="size-4" />
-              </button>
+              </span>
             ))}
-            <button className="mt-auto grid size-10 place-items-center rounded-2xl text-muted-foreground hover:bg-white/50" aria-label="Settings">
+            <span className="mt-auto grid size-10 place-items-center rounded-2xl text-muted-foreground">
               <Settings className="size-4" />
-            </button>
-            <button
-              onClick={() => {
-                setTurns([]);
-                setSessionId(null);
-              }}
-              className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary/20 to-primary-glow/30 text-primary"
-              aria-label="New session"
-            >
-              <Plus className="size-4" />
-            </button>
+            </span>
           </nav>
 
-          {/* Assistant panel */}
-          <aside className="glass-soft flex min-h-0 w-[330px] shrink-0 flex-col gap-4 overflow-y-auto rounded-3xl p-5">
+          <aside className="glass-soft hidden min-h-0 w-[300px] shrink-0 flex-col gap-4 overflow-y-auto rounded-3xl p-5 lg:flex">
             <div className="flex items-center gap-3">
               <span className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground">
                 <Compass className="size-5" />
@@ -552,43 +671,19 @@ function Index() {
                 <h2 className="text-xl font-bold tracking-tight">ORIN</h2>
                 <p className="text-[10px] tracking-[0.2em] text-muted-foreground">AI BROWSER</p>
               </div>
-              <button className="ml-auto grid size-8 place-items-center rounded-full bg-white/70 text-muted-foreground" aria-label="History">
-                <Clock className="size-4" />
-              </button>
             </div>
-
             <div>
-              <h1 className="text-lg font-semibold">
-                Hello{user?.email ? `, ${user.email.split("@")[0]}` : ""} 👋
-              </h1>
+              <h1 className="text-lg font-semibold">Hello{user?.email ? `, ${user.email.split("@")[0]}` : ""} 👋</h1>
               <p className="text-sm text-muted-foreground">
                 {authLoading ? "Waking up…" : user ? "How can I help you today?" : "Sign in to start working."}
               </p>
             </div>
-
-            <button
-              onClick={() => setMode("agent")}
-              className="flex items-start gap-3 rounded-2xl bg-gradient-to-br from-primary/12 to-primary-glow/10 p-4 text-left"
-            >
-              <div>
-                <p className="text-sm font-semibold">
-                  🧠 {mode === "agent" ? "Agent Mode is active" : "Switch Orin to Agent Mode"}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  I browse, research, compare and complete multi-step tasks for you.
-                </p>
-              </div>
-              <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" />
-            </button>
-
             <div className="divide-y divide-border overflow-hidden rounded-2xl bg-white/60">
               {actions.map(({ title, sub, icon: Icon, tint, mode: m }) => (
                 <button
                   key={title}
                   onClick={() => setMode(m)}
-                  className={`flex w-full items-center gap-3 p-3.5 text-left hover:bg-white/70 ${
-                    mode === m ? "bg-white/80" : ""
-                  }`}
+                  className={`flex w-full items-center gap-3 p-3.5 text-left hover:bg-white/70 ${mode === m ? "bg-white/80" : ""}`}
                 >
                   <div>
                     <p className="text-sm font-semibold">{title}</p>
@@ -600,258 +695,57 @@ function Index() {
                 </button>
               ))}
             </div>
-
-            <div className="rounded-2xl bg-white/60 p-4">
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <Plug className="size-4 text-primary" /> Connectors
-              </h3>
-              <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
-                {["Gemini (brain)", "Firecrawl — live web", "Wikidata & Wikipedia", "GDELT — live news", "World Bank data", "SEC EDGAR filings", "U.S. Census data", "Tavily fallback search"].map((name) => (
-                  <li key={name} className="flex items-center gap-2">
-                    <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
-                    {name}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="rounded-2xl bg-white/60 p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="flex items-center gap-2 text-sm font-semibold">
-                  <Mail className="size-4 text-primary" /> Background Jobs
-                </h3>
-                <button
-                  onClick={() => void refreshJobs()}
-                  className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-medium"
-                >
-                  Refresh
-                </button>
-              </div>
-              <ul className="mt-3 space-y-2">
-                {jobs.length ? (
-                  jobs.slice(0, 5).map((job) => (
-                    <li key={job.id} className="flex items-center gap-2 text-xs">
-                      <span
-                        className={`size-2 shrink-0 rounded-full ${
-                          job.status === "done"
-                            ? "bg-emerald-500"
-                            : job.status === "failed"
-                              ? "bg-destructive"
-                              : "animate-pulse bg-primary"
-                        }`}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground">{job.prompt}</span>
-                      <span className="shrink-0 capitalize text-muted-foreground/70">{job.status}</span>
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-xs text-muted-foreground">
-                    No background jobs yet — start a task and leave the tab, Orin emails you the result.
-                  </li>
-                )}
-              </ul>
-            </div>
           </aside>
 
-          {/* Main */}
           <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
-            <section className="glass-soft relative overflow-hidden rounded-3xl p-10">
-              <img
-                src={heroRibbon}
-                alt=""
-                width={1200}
-                height={640}
-                className="pointer-events-none absolute -right-10 -top-16 w-[55%] opacity-90 mix-blend-multiply"
-              />
-              <div className="relative max-w-2xl">
-                <h2 className="text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-                  You have the ideas.
-                  <br />
-                  <span className="text-gradient">Orin</span> finds the way.
-                </h2>
-                <div className="mt-8 flex flex-wrap gap-3">
-                  {chips.map(({ label, icon: Icon, prompt, mode: m }) => (
-                    <button
-                      key={label}
-                      onClick={() => void run(prompt, m)}
-                      className="flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-sm font-medium shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5"
-                    >
-                      <Icon className="size-4 text-foreground/70" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            {active ? (
-              <section ref={resultRef} className="glass-soft rounded-3xl p-6">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold capitalize">{mode} workspace</h3>
-                  {privateMode ? (
-                    <span className="rounded-full bg-emerald-400/20 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
-                      Private — not saved
-                    </span>
-                  ) : null}
-                  <button
-                    className="ml-auto rounded-full bg-white/70 px-3 py-1 text-xs font-medium"
-                    onClick={() => {
-                      setTurns([]);
-                      setSessionId(null);
-                    }}
-                  >
-                    New session
-                  </button>
-                </div>
-
-                <div className="mt-4 space-y-4">
-                  {turns.map((turn, i) =>
-                    turn.role === "user" ? (
-                      <div key={i} className="ml-auto max-w-[80%] rounded-2xl bg-gradient-to-br from-primary/15 to-primary-glow/10 px-4 py-3 text-sm">
-                        {turn.content}
-                      </div>
-                    ) : (
-                      <article key={i} className="rounded-2xl bg-white/60 p-4">
-                        {turn.steps?.length ? (
-                          <div className="mb-3 flex flex-wrap gap-2">
-                            {turn.steps.map((step, j) => (
-                              <span
-                                key={j}
-                                className="max-w-[260px] truncate rounded-full bg-white/80 px-3 py-1 text-[11px] text-muted-foreground"
-                              >
-                                {step.tool}: {step.detail}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                        <OrinMarkdown text={turn.content} />
-                        {turn.sources?.length ? (
-                          <div className="mt-4 border-t border-border pt-3">
-                            <p className="text-xs font-semibold text-muted-foreground">Sources</p>
-                            <ul className="mt-2 space-y-1">
-                              {turn.sources.map((source) => (
-                                <li key={source.url} className="truncate text-xs">
-                                  <a
-                                    href={source.url}
-                                    target="_blank"
-                                    rel="noreferrer noopener"
-                                    className="text-primary underline-offset-2 hover:underline"
-                                  >
-                                    {source.title}
-                                  </a>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </article>
-                    ),
-                  )}
-                  {busy ? (
-                    <div className="rounded-2xl bg-white/70 p-5 shadow-[var(--shadow-soft)]">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="size-4 animate-spin text-primary" />
-                        <p className="text-sm font-semibold">{phase || "Orin is working"}</p>
-                        <span className="ml-auto rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium tabular-nums text-muted-foreground">
-                          {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
-                        </span>
-                      </div>
-
-                      <ol className="mt-4 space-y-0">
-                        <li className="relative flex gap-3 pb-4 pl-1">
-                          <span className="absolute left-[9px] top-5 h-full w-px bg-border" />
-                          <span className="z-10 mt-1 grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
-                            <Sparkles className="size-3" />
-                          </span>
-                          <p className="text-xs text-muted-foreground">Task received — planning steps</p>
-                        </li>
-                        {liveSteps.map((step, i) => (
-                          <li key={`${step.tool}-${step.detail}-${i}`} className="relative flex gap-3 pb-4 pl-1">
-                            {i < liveSteps.length - 1 ? (
-                              <span className="absolute left-[9px] top-5 h-full w-px bg-border" />
-                            ) : null}
-                            <span
-                              className={`z-10 mt-1 grid size-5 shrink-0 place-items-center rounded-full text-white ${
-                                step.status === "error"
-                                  ? "bg-destructive"
-                                  : step.status === "done"
-                                    ? "bg-emerald-500"
-                                    : "animate-pulse bg-primary"
-                              }`}
-                            >
-                              {step.tool === "Search" ? (
-                                <Search className="size-3" />
-                              ) : step.tool === "Read" ? (
-                                <FileText className="size-3" />
-                              ) : (
-                                <Compass className="size-3" />
-                              )}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium">{step.tool}</p>
-                              <p className="truncate text-xs text-muted-foreground">{step.detail}</p>
-                            </div>
-                          </li>
-                        ))}
-                      </ol>
-
-                      {liveSources.length ? (
-                        <div className="mt-1 flex flex-wrap gap-2 border-t border-border pt-3">
-                          {liveSources.slice(-8).map((source) => (
-                            <span
-                              key={source.url}
-                              className="max-w-[220px] truncate rounded-full bg-white/80 px-3 py-1 text-[11px] text-muted-foreground"
-                            >
-                              {new URL(source.url).hostname.replace("www.", "")}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {handoff ? (
-                        <p className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <Mail className="size-3.5" />
-                          Safe to leave — Orin finishes this in the background and emails {handoff}.
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-
+            <div className="flex-1 space-y-4 overflow-y-auto pb-4">
+              <section className="glass-soft relative overflow-hidden rounded-3xl p-6 sm:p-10">
+                <img
+                  src={heroRibbon}
+                  alt=""
+                  width={1200}
+                  height={640}
+                  className="pointer-events-none absolute -right-10 -top-16 w-[70%] opacity-90 mix-blend-multiply sm:w-[55%]"
+                />
+                <div className="relative max-w-2xl">
+                  <h2 className="text-2xl font-bold leading-tight tracking-tight sm:text-4xl">
+                    You have the ideas.
+                    <br />
+                    <span className="text-gradient">Orin</span> finds the way.
+                  </h2>
+                  <div className="mt-6 flex flex-wrap gap-2 sm:mt-8 sm:gap-3">
+                    {chips.map(({ label, icon: Icon, prompt, mode: m }) => (
+                      <button
+                        key={label}
+                        onClick={() => void run(prompt, m)}
+                        className="flex items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-xs font-medium shadow-[var(--shadow-soft)] sm:px-4 sm:py-2 sm:text-sm"
+                      >
+                        <Icon className="size-4 text-foreground/70" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </section>
-            ) : (
+
               <section className="grid gap-4 lg:grid-cols-3">
-                {features.map(({ title, sub, tint, icon: Icon }) => (
-                  <article key={title} className="glass-soft flex items-center gap-4 rounded-3xl p-6">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold">{title}</h3>
-                      <p className="mt-2 text-sm text-muted-foreground">{sub}</p>
-                    </div>
-                    <span className={`ml-auto grid size-24 shrink-0 place-items-center rounded-3xl bg-gradient-to-br ${tint} text-white/90`}>
-                      <Icon className="size-9" />
-                    </span>
-                  </article>
-                ))}
-              </section>
-            )}
-
-            <section className="grid gap-4 lg:grid-cols-3">
-              <article className="glass-soft rounded-3xl p-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">Recent Sessions</h3>
-                  <button
-                    onClick={() => void refreshSessions()}
-                    className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium"
-                  >
-                    Refresh
-                  </button>
-                </div>
-                <ul className="mt-4 divide-y divide-border">
-                  {sessions.length
-                    ? sessions.map((session) => (
+                <article className="glass-soft rounded-3xl p-5 sm:p-6">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-semibold">Recent Sessions</h3>
+                    {sessions.length ? (
+                      <button
+                        onClick={() => void wipeHistory()}
+                        className="flex items-center gap-1 rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-destructive"
+                      >
+                        <Trash2 className="size-3.5" /> Clear all
+                      </button>
+                    ) : null}
+                  </div>
+                  <ul className="mt-3 divide-y divide-border">
+                    {sessions.length ? (
+                      sessions.map((session) => (
                         <li key={session.id} className="flex items-center gap-3 py-3">
-                          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/80 text-foreground/70">
+                          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/80 text-foreground/70">
                             <History className="size-4" />
                           </span>
                           <button className="min-w-0 flex-1 text-left" onClick={() => void openSession(session.id)}>
@@ -869,118 +763,59 @@ function Index() {
                           </button>
                         </li>
                       ))
-                    : fallbackSessions.map(({ title, meta, icon: Icon }) => (
-                        <li key={title} className="flex items-center gap-3 py-3 opacity-70">
-                          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/80 text-foreground/70">
+                    ) : (
+                      <li className="py-3 text-sm text-muted-foreground">
+                        {user ? "No sessions yet — ask Orin anything below." : "Sign in to keep your sessions."}
+                      </li>
+                    )}
+                  </ul>
+                </article>
+
+                <article className="glass-soft rounded-3xl p-5 sm:p-6">
+                  <h3 className="flex items-center gap-2 font-semibold">
+                    AI Suggestions for You <Flame className="size-4 text-primary" />
+                  </h3>
+                  <ul className="mt-4 space-y-3">
+                    {suggestions.map(({ title, meta, icon: Icon, mode: m }) => (
+                      <li key={title}>
+                        <button className="flex w-full items-center gap-3 text-left" onClick={() => void run(title, m)}>
+                          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 to-primary-glow/20 text-primary">
                             <Icon className="size-4" />
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{title}</p>
+                            <p className="text-sm font-medium">{title}</p>
                             <p className="text-xs text-muted-foreground">{meta}</p>
                           </div>
-                        </li>
-                      ))}
-                </ul>
-              </article>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
 
-              <article className="glass-soft rounded-3xl p-6">
-                <h3 className="flex items-center gap-2 font-semibold">
-                  AI Suggestions for You <Flame className="size-4 text-primary" />
-                </h3>
-                <ul className="mt-4 space-y-3">
-                  {suggestions.map(({ title, meta, icon: Icon, mode: m }) => (
-                    <li key={title}>
-                      <button className="flex w-full items-center gap-3 text-left" onClick={() => void run(title, m)}>
-                        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/25 to-primary-glow/20 text-primary">
-                          <Icon className="size-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{title}</p>
-                          <p className="text-xs text-muted-foreground">{meta}</p>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </article>
-
-              <article className="relative overflow-hidden rounded-3xl">
-                <img
-                  src={weatherBg}
-                  alt="Pastel sunset over mountains near Srinagar"
-                  width={700}
-                  height={560}
-                  loading="lazy"
-                  className="absolute inset-0 size-full object-cover"
-                />
-                <div className="relative flex h-full flex-col justify-between bg-gradient-to-b from-black/10 to-black/35 p-6 text-white">
-                  <div className="flex items-center gap-1 text-sm">
-                    Srinagar <ChevronDown className="size-4" />
-                  </div>
-                  <div className="mt-6 flex items-end justify-between">
-                    <div>
+                <article className="relative hidden overflow-hidden rounded-3xl sm:block">
+                  <img
+                    src={weatherBg}
+                    alt="Pastel sunset over mountains near Srinagar"
+                    width={700}
+                    height={560}
+                    loading="lazy"
+                    className="absolute inset-0 size-full object-cover"
+                  />
+                  <div className="relative flex h-full flex-col justify-between bg-gradient-to-b from-black/10 to-black/35 p-6 text-white">
+                    <div className="flex items-center gap-1 text-sm">
+                      Srinagar <ChevronDown className="size-4" />
+                    </div>
+                    <div className="mt-6 flex items-end justify-between">
                       <p className="text-5xl font-semibold leading-none">
-                        24<span className="text-2xl align-top">°C</span>
+                        24<span className="align-top text-2xl">°C</span>
                       </p>
-                      <p className="mt-2 text-sm">Partly Cloudy</p>
+                      <Cloud className="size-12 opacity-90" />
                     </div>
-                    <Cloud className="size-12 opacity-90" />
                   </div>
-                  <dl className="mt-8 grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <dt className="opacity-80">Humidity</dt>
-                      <dd className="font-semibold">58%</dd>
-                    </div>
-                    <div>
-                      <dt className="opacity-80">Wind</dt>
-                      <dd className="font-semibold">12 km/h</dd>
-                    </div>
-                    <div>
-                      <dt className="opacity-80">AQI</dt>
-                      <dd className="font-semibold">42</dd>
-                    </div>
-                  </dl>
-                </div>
-              </article>
-            </section>
-
-            <p className="py-2 text-center text-sm text-muted-foreground">
-              Orin AI Browser — Your AI-Powered Gateway to Everything 💗
-            </p>
+                </article>
+              </section>
             </div>
-
-            {/* Pinned composer — always visible at the bottom */}
-            <div className="w-full shrink-0 border-t border-border bg-background/70 p-4 backdrop-blur-xl">
-              {error ? (
-                <p className="mx-auto mb-2 max-w-3xl text-sm text-destructive">{error}</p>
-              ) : null}
-              <form
-                className="glass mx-auto flex w-full max-w-3xl items-center gap-3 rounded-full py-2.5 pl-5 pr-2.5"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(input, mode);
-                }}
-              >
-                <Search className="size-4 shrink-0 text-muted-foreground" />
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                  placeholder={`Ask Orin to ${mode}…`}
-                />
-                <span className="shrink-0 rounded-full bg-white/70 px-3 py-1 text-[11px] font-medium capitalize text-muted-foreground">
-                  {mode}
-                </span>
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[var(--shadow-soft)] disabled:opacity-60"
-                  aria-label="Send"
-                >
-                  {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
-                </button>
-              </form>
-            </div>
+            {composer}
           </main>
         </div>
       </div>

@@ -43,6 +43,7 @@ import {
   CheckCircle2,
   Eye,
   Download,
+  Bell,
 } from "lucide-react";
 import heroRibbon from "@/assets/hero-ribbon.jpg";
 import weatherBg from "@/assets/weather-bg.jpg";
@@ -612,6 +613,32 @@ function Index() {
             <span className="text-sm text-muted-foreground">Orin AI Browser</span>
           </div>
           <div className="ml-auto flex items-center gap-1.5 text-muted-foreground sm:gap-2">
+            <Link
+              to="/search"
+              className="flex items-center gap-1.5 rounded-full bg-white/60 px-3 py-1.5 text-xs font-medium"
+              title="Private web search"
+            >
+              <Search className="size-4" /> <span className="hidden sm:inline">Search</span>
+            </Link>
+            <button
+              onClick={async () => {
+                const { enablePush } = await import("@/lib/push-client");
+                const r = await enablePush();
+                const msg: Record<string, string> = {
+                  registered: "Notifications are on.",
+                  "granted-local": "Notifications allowed on this device.",
+                  "open-in-new-tab": "Open Orin in its own tab or the installed app to turn on notifications.",
+                  denied: "Notifications are blocked — allow them in your browser's site settings.",
+                  unsupported: "This browser doesn't support notifications.",
+                  "not-configured": "Notifications aren't set up yet.",
+                };
+                setError(msg[r.status] ?? null);
+              }}
+              className="flex items-center gap-1.5 rounded-full bg-white/60 px-3 py-1.5 text-xs font-medium"
+              title="Turn on notifications"
+            >
+              <Bell className="size-4" /> <span className="hidden sm:inline">Alerts</span>
+            </button>
             <button
               onClick={() => void install()}
               className="flex items-center gap-1.5 rounded-full bg-white/60 px-3 py-1.5 text-xs font-medium"

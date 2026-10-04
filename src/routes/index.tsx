@@ -199,7 +199,7 @@ function Index() {
   const refreshSessions = useCallback(async () => {
     if (!user) return;
     try {
-      setSessions((await listSessions()) as SessionRow[]);
+      setSessions(((await listSessions()) ?? []) as SessionRow[]);
     } catch {
       /* ignore */
     }
@@ -208,7 +208,7 @@ function Index() {
   const refreshJobs = useCallback(async () => {
     if (!user) return;
     try {
-      setJobs((await listJobs()) as JobRow[]);
+      setJobs(((await listJobs()) ?? []) as JobRow[]);
     } catch {
       /* ignore */
     }
@@ -379,7 +379,7 @@ function Index() {
     setError(null);
     try {
       const rows = await getSession({ data: { sessionId: id } });
-      setTurns(rows as Turn[]);
+      setTurns((rows ?? []) as Turn[]);
       requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }));
     } catch {
       setError("Could not open that session.");

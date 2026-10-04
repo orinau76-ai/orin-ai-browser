@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as SearchRouteImport } from './routes/search'
 import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as ApiPublicRunJobRouteImport } from './routes/api/public/run-job'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SearchRoute = SearchRouteImport.update({
+  id: '/search',
+  path: '/search',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAgentRoute = ApiAgentRouteImport.update({
@@ -38,12 +44,14 @@ const ApiPublicRunJobRoute = ApiPublicRunJobRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/search': typeof SearchRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/public/run-job': typeof ApiPublicRunJobRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/search': typeof SearchRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/public/run-job': typeof ApiPublicRunJobRoute
 }
@@ -51,20 +59,28 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/search': typeof SearchRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/public/run-job': typeof ApiPublicRunJobRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/api/agent' | '/api/public/run-job'
+  fullPaths: '/' | '/auth' | '/search' | '/api/agent' | '/api/public/run-job'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/api/agent' | '/api/public/run-job'
-  id: '__root__' | '/' | '/auth' | '/api/agent' | '/api/public/run-job'
+  to: '/' | '/auth' | '/search' | '/api/agent' | '/api/public/run-job'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/search'
+    | '/api/agent'
+    | '/api/public/run-job'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  SearchRoute: typeof SearchRoute
   ApiAgentRoute: typeof ApiAgentRoute
   ApiPublicRunJobRoute: typeof ApiPublicRunJobRoute
 }
@@ -83,6 +99,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/agent': {
@@ -105,6 +128,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  SearchRoute: SearchRoute,
   ApiAgentRoute: ApiAgentRoute,
   ApiPublicRunJobRoute: ApiPublicRunJobRoute,
 }

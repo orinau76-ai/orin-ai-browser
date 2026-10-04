@@ -201,6 +201,23 @@ const budgets: Record<string, number> = {
   agent: 20,
 };
 
+/**
+ * Master intent router: keyword-based (no extra model call) so it costs nothing.
+ * Only re-routes the generic "agent"/"auto" modes; an explicit user choice wins.
+ */
+export function routeIntent(mode: string, prompt: string): string {
+  if (mode !== "agent" && mode !== "auto") return mode;
+  const p = prompt.toLowerCase();
+  if (/\b(open|click|go to|navigate|fill|log ?in|book|browse)\b|https?:\/\//.test(p)) return "automation";
+  if (/\b(competitor|rival|funding|hiring|filings?|10-k|acquisition|spy|intel)\b/.test(p)) return "spy";
+  if (/\b(vs\.?|versus|compare|comparison|better than)\b/.test(p)) return "compare";
+  if (/\b(summari[sz]e|tl;?dr)\b/.test(p)) return "summarize";
+  if (/\b(explain|what is|how does)\b/.test(p)) return "explain";
+  if (/\b(extract|table of|list all)\b/.test(p)) return "extract";
+  if (p.split(/\s+/).length <= 6) return "search";
+  return mode === "auto" ? "research" : "agent";
+}
+
 export async function runAgent(options: {
   mode: string;
   prompt: string;
@@ -211,6 +228,9 @@ export async function runAgent(options: {
   onEvent?: (event: AgentEvent) => void;
 }): Promise<AgentResult> {
   const emit = options.onEvent ?? (() => {});
+  const mode = routeIntent(options.mode, options.prompt);
+  if (mode !== options.mode) emit({ type: "phase", label: `Routed to ${mode} agent` });
+  options = { ...options, mode };
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt(options.mode, options.privateMode) },
     ...options.history.map((m) => ({ role: m.role, content: m.content }) as ChatMessage),

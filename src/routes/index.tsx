@@ -175,6 +175,7 @@ function Index() {
   const [phase, setPhase] = useState("");
   const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
   const [liveSources, setLiveSources] = useState<Source[]>([]);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [handoff, setHandoff] = useState<string | null>(null);
@@ -283,6 +284,7 @@ function Index() {
       setHandoff(null);
       setLiveSteps([]);
       setLiveSources([]);
+      setViewerUrl(null);
       setLiveText("");
       setPhase("Connecting to Orin");
       setMode(runMode);
@@ -295,6 +297,7 @@ function Index() {
           (event) => {
             if (event.type === "session") setSessionId(event.sessionId);
             else if (event.type === "phase") setPhase(event.label);
+            else if (event.type === "browser") setViewerUrl(event.viewerUrl);
             else if (event.type === "delta") setLiveText((t) => t + event.text);
             else if (event.type === "source")
               setLiveSources((prev) =>
@@ -565,6 +568,15 @@ function Index() {
                         </li>
                       ))}
                     </ol>
+                  ) : null}
+                  {viewerUrl ? (
+                    <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
+                      <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted-foreground">
+                        <span>Live browser</span>
+                        <a href={viewerUrl} target="_blank" rel="noreferrer" className="underline">Open</a>
+                      </div>
+                      <iframe src={viewerUrl} title="Live browser" className="aspect-video w-full" sandbox="allow-scripts allow-same-origin" />
+                    </div>
                   ) : null}
                   {liveSources.length ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">

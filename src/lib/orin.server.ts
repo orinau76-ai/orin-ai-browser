@@ -112,7 +112,7 @@ const tools: ToolDef[] = [
     function: {
       name: "browser_action",
       description:
-        "Drive the remote browser session. action: navigate | read | screenshot. target must be a full http(s) URL. Observe the returned page content and verify the action before continuing.",
+        "Drive a real remote Chrome browser. action: navigate (target=URL) | click (target=#N element id from the last observation) | type (target=#N, value=text) | press (value=key, e.g. Enter) | scroll (value=up/down) | read. Every call returns the observed page afterwards; verify the result before continuing.",
       parameters: {
         type: "object",
         properties: {
@@ -185,7 +185,8 @@ export type AgentEvent =
   | { type: "phase"; label: string }
   | { type: "step"; step: Step; status: "start" | "done" | "error" }
   | { type: "delta"; text: string }
-  | { type: "source"; source: Source };
+  | { type: "source"; source: Source }
+  | { type: "browser"; viewerUrl: string };
 
 // Step budgets are deliberately tight: every extra loop is another paid model
 // call and several more seconds of waiting.
@@ -243,6 +244,19 @@ export async function runAgent(options: {
 
   emit({ type: "phase", label: "Planning the task" });
 
+  let browser: import("./cdp.server").BrowserSession | null = null;
+  let browserOpening: Promise<import("./cdp.server").BrowserSession> | null = null;
+  const getBrowser = async () => {
+    if (browser) return browser;
+    if (!browserOpening) {
+      browserOpening = import("./cdp.server").then((m) => m.openBrowser());
+    }
+    browser = await browserOpening;
+    emit({ type: "browser", viewerUrl: browser.viewerUrl });
+    return browser;
+  };
+  options.signal?.addEventListener("abort", () => void browser?.close());
+  try {
   for (let i = 0; i < maxSteps; i++) {
     const reply = await chatStream(
       {
@@ -363,8 +377,9 @@ export async function runAgent(options: {
             } else if (name === "us_census") {
               output = await censusPopulation(Number(args["year"] ?? 2022));
             } else if (name === "browser_action") {
-              const { runBrowserAction } = await import("./browser.server");
-              output = await runBrowserAction(
+              const { act } = await import("./cdp.server");
+              output = await act(
+                await getBrowser(),
                 String(args["action"] ?? "read"),
                 String(args["target"] ?? ""),
                 String(args["value"] ?? ""),
@@ -397,6 +412,9 @@ export async function runAgent(options: {
   }
 
 
+  } finally {
+    if (browser) await (browser as import("./cdp.server").BrowserSession).close();
+  }
   const final = await chat({
     model: MODEL,
     messages: [

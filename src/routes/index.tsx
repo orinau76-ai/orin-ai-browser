@@ -329,6 +329,12 @@ function Index() {
                 { role: "assistant", content: event.answer, sources: event.sources, steps: event.steps },
               ]);
               void refreshSessions();
+              if (speakNextRef.current && "speechSynthesis" in window) {
+                speakNextRef.current = false;
+                const plain = event.answer.replace(/\[S\d+\]|[#*_`>|]/g, "").split(/\n+sources/i)[0]!.slice(0, 1200);
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(new SpeechSynthesisUtterance(plain));
+              }
             } else if (event.type === "error") {
               setError(event.message);
             }
@@ -359,6 +365,44 @@ function Index() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ block: "end" });
   }, [turns, liveText, liveSteps.length, busy]);
+
+  function toggleVoice() {
+    if (listening) {
+      voiceRef.current?.stop();
+      return;
+    }
+    const w = window as unknown as { SpeechRecognition?: new () => any; webkitSpeechRecognition?: new () => any };
+    const Rec = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!Rec) {
+      setError("Voice input isn't supported in this browser. Try Chrome or Edge.");
+      return;
+    }
+    const rec = new Rec();
+    rec.lang = navigator.language || "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    let finalText = "";
+    rec.onresult = (e: any) => {
+      let text = "";
+      for (const r of e.results) {
+        text += r[0].transcript;
+        if (r.isFinal) finalText = text;
+      }
+      setInput(text);
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => {
+      setListening(false);
+      if (finalText.trim()) {
+        speakNextRef.current = true;
+        void run(finalText, mode);
+      }
+    };
+    voiceRef.current = rec;
+    window.speechSynthesis?.cancel();
+    setListening(true);
+    rec.start();
+  }
 
   async function wipeHistory() {
     if (!confirm("Delete all your Orin history?")) return;

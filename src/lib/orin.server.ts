@@ -413,7 +413,9 @@ export async function runAgent(options: {
 
 
   } finally {
-    if (browser) await (browser as import("./cdp.server").BrowserSession).close();
+    // Keep the cloud browser open after success so the live view stays visible;
+    // it auto-releases on its own timeout. Close only when the user cancels.
+    if (browser && options.signal?.aborted) await (browser as import("./cdp.server").BrowserSession).close();
   }
   const final = await chat({
     model: MODEL,

@@ -130,6 +130,9 @@ export async function act(b: BrowserSession, action: string, target: string, val
       `(() => { const e = document.querySelector(${sel}); if (!e) return false; e.focus(); const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e), 'value')?.set; set ? set.call(e, ${JSON.stringify(value)}) : (e.value = ${JSON.stringify(value)}); e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`,
     );
     if (!ok) return `Type failed: no input matches "${target}".`;
+    // Also send real keystrokes so sites that listen for key events react.
+    await evaluate(b, `(() => { const e = document.querySelector(${sel}); if (e) { e.value = ''; e.focus(); } })()`);
+    await b.send("Input.insertText", { text: value });
   } else if (verb === "press") {
     const key = value || target || "Enter";
     await b.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: key === "Enter" ? 13 : 0, text: key === "Enter" ? "\r" : "" });

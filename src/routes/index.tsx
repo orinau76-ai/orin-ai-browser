@@ -44,6 +44,8 @@ import {
   Eye,
   Download,
   Bell,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import heroRibbon from "@/assets/hero-ribbon.jpg";
 import weatherBg from "@/assets/weather-bg.jpg";
@@ -176,6 +178,9 @@ function Index() {
   const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
   const [liveSources, setLiveSources] = useState<Source[]>([]);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
+  const voiceRef = useRef<{ stop: () => void } | null>(null);
+  const speakNextRef = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [handoff, setHandoff] = useState<string | null>(null);
@@ -324,6 +329,12 @@ function Index() {
                 { role: "assistant", content: event.answer, sources: event.sources, steps: event.steps },
               ]);
               void refreshSessions();
+              if (speakNextRef.current && "speechSynthesis" in window) {
+                speakNextRef.current = false;
+                const plain = event.answer.replace(/\[S\d+\]|[#*_`>|]/g, "").split(/\n+sources/i)[0]!.slice(0, 1200);
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(new SpeechSynthesisUtterance(plain));
+              }
             } else if (event.type === "error") {
               setError(event.message);
             }
@@ -354,6 +365,44 @@ function Index() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ block: "end" });
   }, [turns, liveText, liveSteps.length, busy]);
+
+  function toggleVoice() {
+    if (listening) {
+      voiceRef.current?.stop();
+      return;
+    }
+    const w = window as unknown as { SpeechRecognition?: new () => any; webkitSpeechRecognition?: new () => any };
+    const Rec = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!Rec) {
+      setError("Voice input isn't supported in this browser. Try Chrome or Edge.");
+      return;
+    }
+    const rec = new Rec();
+    rec.lang = navigator.language || "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    let finalText = "";
+    rec.onresult = (e: any) => {
+      let text = "";
+      for (const r of e.results) {
+        text += r[0].transcript;
+        if (r.isFinal) finalText = text;
+      }
+      setInput(text);
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => {
+      setListening(false);
+      if (finalText.trim()) {
+        speakNextRef.current = true;
+        void run(finalText, mode);
+      }
+    };
+    voiceRef.current = rec;
+    window.speechSynthesis?.cancel();
+    setListening(true);
+    rec.start();
+  }
 
   async function wipeHistory() {
     if (!confirm("Delete all your Orin history?")) return;
@@ -452,6 +501,16 @@ function Index() {
             className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
             placeholder="Search, research, or give Orin a task…"
           />
+          {!busy ? (
+            <button
+              type="button"
+              onClick={toggleVoice}
+              aria-label={listening ? "Stop listening" : "Speak to Orin"}
+              className={`grid size-10 shrink-0 place-items-center rounded-full ${listening ? "animate-pulse bg-primary text-primary-foreground" : "bg-white/70 text-foreground"}`}
+            >
+              {listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+            </button>
+          ) : null}
           {busy ? (
             <button
               type="button"
@@ -540,6 +599,15 @@ function Index() {
               ),
             )}
 
+                  {viewerUrl ? (
+                    <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
+                      <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted-foreground">
+                        <span>{busy ? "Live browser" : "Browser (stays open a few minutes)"}</span>
+                        <a href={viewerUrl} target="_blank" rel="noreferrer" className="underline">Open</a>
+                      </div>
+                      <iframe src={viewerUrl} title="Live browser" className="aspect-video w-full" sandbox="allow-scripts allow-same-origin" />
+                    </div>
+                  ) : null}
             {busy ? (
               <div className="space-y-3">
                 <div className="glass-soft rounded-2xl p-4">
@@ -551,32 +619,27 @@ function Index() {
                     </span>
                   </div>
                   {liveSteps.length ? (
-                    <ol className="mt-3 space-y-2">
+                    <ol className="mt-4 flex items-start overflow-x-auto pb-1">
                       {liveSteps.map((step, i) => (
-                        <li key={`${step.tool}-${i}`} className="flex items-center gap-2 text-xs">
-                          <span
-                            className={`size-2 shrink-0 rounded-full ${
-                              step.status === "error"
-                                ? "bg-destructive"
-                                : step.status === "done"
-                                  ? "bg-emerald-500"
-                                  : "animate-pulse bg-primary"
-                            }`}
-                          />
-                          <span className="font-medium">{step.tool}</span>
-                          <span className="min-w-0 truncate text-muted-foreground">{step.detail}</span>
+                        <li key={`${step.tool}-${i}`} className="flex min-w-[84px] flex-1 flex-col items-center text-center">
+                          <div className="flex w-full items-center">
+                            <span className={`h-0.5 flex-1 ${i === 0 ? "opacity-0" : "bg-primary/30"}`} />
+                            <span
+                              className={`grid size-3.5 shrink-0 place-items-center rounded-full ring-4 ${
+                                step.status === "error"
+                                  ? "bg-destructive ring-destructive/20"
+                                  : step.status === "done"
+                                    ? "bg-primary ring-primary/15"
+                                    : "animate-pulse bg-primary-glow ring-primary/30"
+                              }`}
+                            />
+                            <span className={`h-0.5 flex-1 ${i === liveSteps.length - 1 ? "opacity-0" : "bg-primary/30"}`} />
+                          </div>
+                          <span className="mt-1.5 text-[11px] font-semibold">{step.tool}</span>
+                          <span className="line-clamp-2 max-w-[110px] px-1 text-[10px] text-muted-foreground">{step.detail}</span>
                         </li>
                       ))}
                     </ol>
-                  ) : null}
-                  {viewerUrl ? (
-                    <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
-                      <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted-foreground">
-                        <span>Live browser</span>
-                        <a href={viewerUrl} target="_blank" rel="noreferrer" className="underline">Open</a>
-                      </div>
-                      <iframe src={viewerUrl} title="Live browser" className="aspect-video w-full" sandbox="allow-scripts allow-same-origin" />
-                    </div>
                   ) : null}
                   {liveSources.length ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">

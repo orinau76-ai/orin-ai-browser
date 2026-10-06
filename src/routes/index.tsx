@@ -1,4 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useLiveVoice } from "@/hooks/use-live-voice";
+type VoiceDraft = { id: string; prompt: string; mode: string; steps: string[]; needs_approval_reason: string };
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -178,9 +180,17 @@ function Index() {
   const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
   const [liveSources, setLiveSources] = useState<Source[]>([]);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const [listening, setListening] = useState(false);
-  const voiceRef = useRef<{ stop: () => void } | null>(null);
+  const [draft, setDraft] = useState<VoiceDraft | null>(null);
+  const call = useLiveVoice({
+    onEvent(event) {
+      if (event.type === "app.task.draft") setDraft(event["draft"] as VoiceDraft);
+      if (event.type === "app.delegation.pending") setPhase("Orin is drafting your task…");
+    },
+  });
+  const listening = call.status === "connecting" || call.status === "connected";
   const speakNextRef = useRef(false);
+  const narrateRef = useRef(call.narrate);
+  narrateRef.current = call.narrate;
   const [elapsed, setElapsed] = useState(0);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [handoff, setHandoff] = useState<string | null>(null);
@@ -310,6 +320,7 @@ function Index() {
               );
             else if (event.type === "step") {
               if (event.status === "start") setLiveText("");
+              if (event.status !== "start") narrateRef.current(`Step ${event.status === "error" ? "failed" : "done"}: ${event.step.tool} ${event.step.detail}`.slice(0, 200));
               setPhase(`${event.step.tool}: ${event.step.detail}`.slice(0, 90));
               setLiveSteps((prev) => {
                 const idx = prev.findIndex(
@@ -329,11 +340,9 @@ function Index() {
                 { role: "assistant", content: event.answer, sources: event.sources, steps: event.steps },
               ]);
               void refreshSessions();
-              if (speakNextRef.current && "speechSynthesis" in window) {
-                speakNextRef.current = false;
-                const plain = event.answer.replace(/\[S\d+\]|[#*_`>|]/g, "").split(/\n+sources/i)[0]!.slice(0, 1200);
-                window.speechSynthesis.cancel();
-                window.speechSynthesis.speak(new SpeechSynthesisUtterance(plain));
+              {
+                const plain = event.answer.replace(/\[S\d+\]|[#*_`>|]/g, "").split(/\n+sources/i)[0]!;
+                narrateRef.current(`Task finished. Result: ${plain.slice(0, 330)}`);
               }
             } else if (event.type === "error") {
               setError(event.message);
@@ -367,41 +376,24 @@ function Index() {
   }, [turns, liveText, liveSteps.length, busy]);
 
   function toggleVoice() {
-    if (listening) {
-      voiceRef.current?.stop();
+    if (call.status === "connecting" || call.status === "connected") {
+      call.stop();
       return;
     }
-    const w = window as unknown as { SpeechRecognition?: new () => any; webkitSpeechRecognition?: new () => any };
-    const Rec = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!Rec) {
-      setError("Voice input isn't supported in this browser. Try Chrome or Edge.");
+    if (!user) {
+      setError("Sign in to talk to Orin.");
       return;
     }
-    const rec = new Rec();
-    rec.lang = navigator.language || "en-US";
-    rec.interimResults = true;
-    rec.continuous = false;
-    let finalText = "";
-    rec.onresult = (e: any) => {
-      let text = "";
-      for (const r of e.results) {
-        text += r[0].transcript;
-        if (r.isFinal) finalText = text;
-      }
-      setInput(text);
-    };
-    rec.onerror = () => setListening(false);
-    rec.onend = () => {
-      setListening(false);
-      if (finalText.trim()) {
-        speakNextRef.current = true;
-        void run(finalText, mode);
-      }
-    };
-    voiceRef.current = rec;
-    window.speechSynthesis?.cancel();
-    setListening(true);
-    rec.start();
+    setDraft(null);
+    call.start();
+  }
+
+  function approveDraft() {
+    if (!draft) return;
+    const d = draft;
+    setDraft(null);
+    call.narrate(`The user approved. Starting the ${d.mode} task now.`);
+    void run(d.prompt, d.mode as Mode);
   }
 
   async function wipeHistory() {
@@ -487,6 +479,38 @@ function Index() {
       <div className="mx-auto max-w-3xl">
         {error ? <p className="mb-2 text-sm text-destructive">{error}</p> : null}
         <div className="mb-2">{modeToggles}</div>
+        <audio ref={call.audioRef} className="hidden" />
+        {listening || call.error ? (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-2xl bg-white/60 px-4 py-2 text-xs">
+            <span className="flex items-center gap-2">
+              <span className={`size-2 rounded-full ${call.status === "connected" ? "animate-pulse bg-primary" : "bg-muted-foreground"}`} />
+              {call.error ?? (call.status === "connected" ? "Voice on — talk to Orin" : "Connecting voice…")}
+            </span>
+            {call.playbackBlocked ? (
+              <button type="button" onClick={call.resumePlayback} className="font-semibold text-primary">Play audio</button>
+            ) : null}
+          </div>
+        ) : null}
+        {draft ? (
+          <div className="glass mb-2 rounded-2xl p-4 text-sm">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">Task ready · {draft.mode}</div>
+            <p className="mb-3 font-medium">{draft.prompt}</p>
+            <ol className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {draft.steps.map((step, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="size-2.5 rounded-full border-2 border-primary" />
+                  {step}
+                  {i < draft.steps.length - 1 ? <span className="h-px w-4 bg-primary/40" /> : null}
+                </li>
+              ))}
+            </ol>
+            {draft.needs_approval_reason ? <p className="mb-3 text-xs text-muted-foreground">{draft.needs_approval_reason}</p> : null}
+            <div className="flex gap-2">
+              <button type="button" onClick={approveDraft} disabled={busy} className="rounded-full bg-gradient-to-br from-primary to-primary-glow px-4 py-2 text-xs font-semibold text-primary-foreground">Approve & run</button>
+              <button type="button" onClick={() => { setDraft(null); call.narrate("The user declined that task draft."); }} className="rounded-full bg-white/70 px-4 py-2 text-xs font-semibold">Decline</button>
+            </div>
+          </div>
+        ) : null}
         <form
           className="glass flex w-full items-center gap-2 rounded-full py-2 pl-4 pr-2 sm:gap-3 sm:pl-5"
           onSubmit={(e) => {
@@ -505,7 +529,7 @@ function Index() {
             <button
               type="button"
               onClick={toggleVoice}
-              aria-label={listening ? "Stop listening" : "Speak to Orin"}
+              aria-label={listening ? "End voice" : "Talk to Orin"}
               className={`grid size-10 shrink-0 place-items-center rounded-full ${listening ? "animate-pulse bg-primary text-primary-foreground" : "bg-white/70 text-foreground"}`}
             >
               {listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}

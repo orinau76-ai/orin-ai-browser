@@ -12,7 +12,13 @@ export type LiveConfig = {
 };
 
 // Fill from co-loaded knowledge: the gateway URL, the Live model and the resolved chat model.
-const liveSettings = { baseURL: "", liveModel: "", backendModel: "" };
+const liveSettings = {
+  baseURL: "https://ai.gateway.lovable.dev",
+  liveModel: "openai/gpt-live-1",
+  backendModel: "openai/gpt-6-astra",
+  openingInstructions:
+    "Speak English. Greet the user warmly, for example: Hey there, how can I help you today? Then listen.",
+};
 
 export type LiveSocket = {
   readonly readyState: number;
@@ -111,34 +117,31 @@ export function handleLiveRequest(request: Request): Response {
   return new Response(null, response);
 }
 
-const conversationInstructions = `You are Mira, a calm learning companion.
-Speak naturally in brief replies. Ask a focused question when details are unclear.
+const conversationInstructions = `You are Orin, a friendly AI browser assistant. Speak natural, warm English in short replies.
+You help the user create tasks for Orin's agents: research, search, compare, summarize, competitor intelligence (spy), or browser automation (opening sites, searching, filling forms).
+Ask one short question when an important detail is missing, such as which website or what to search for.
 Backchannel policy: Use moderate listening sounds without taking over.
 Interruption policy: Stop your answer and listen when the user interrupts.
 Delegation policy:
-Backend tools: Reason through questions and plan study sessions across days.
-Delegate to the backend when: The user wants a study schedule or careful reasoning,
-or a correction changes a question already being worked on.
-Do not delegate to the backend when: Greeting, clarifying a question, or repeating
-a still-current answer. Wait for the backend result before presenting its answer.`;
+Backend tools: Draft a task for Orin's agents and show it on screen for approval. The backend cannot run the task; only the user's Approve tap runs it.
+Delegate to the backend when: The user has described a task with enough detail, or corrects a task already drafted.
+Do not delegate to the backend when: Greeting, chatting, clarifying details, or repeating a still-current answer.
+Wait for the backend result before describing the draft. Never say a task is done, ordered, or submitted unless the app tells you it finished.
+When the app reports task progress or results, tell the user briefly in natural language.`;
 
-const studyScheduleInput = z
+const taskInput = z
   .object({
-    total_minutes: z.number().int().min(1).max(10_080),
-    days: z.number().int().min(1).max(30),
+    prompt: z.string().min(3).max(1000),
+    mode: z.enum(["research", "search", "compare", "summarize", "explain", "extract", "spy", "automation", "agent"]),
+    steps: z.array(z.string().min(1).max(80)).min(1).max(8),
+    needs_approval_reason: z.string().max(160),
   })
   .strict();
 
-function planStudySchedule(args: z.infer<typeof studyScheduleInput>) {
-  const daily = Math.floor(args.total_minutes / args.days);
-  return {
-    total_minutes: args.total_minutes,
-    days: args.days,
-    sessions: Array.from({ length: args.days }, (_, index) => ({
-      day: index + 1,
-      minutes: daily + (index < args.total_minutes % args.days ? 1 : 0),
-    })),
-  };
+type TaskDraft = z.infer<typeof taskInput> & { id: string };
+
+function planStudySchedule(args: z.infer<typeof taskInput>): TaskDraft {
+  return { ...args, id: crypto.randomUUID() };
 }
 
 function isListeningSound(text: string) {
@@ -200,18 +203,19 @@ async function answerQuestion(
       },
     },
     system:
-      "Help a spoken learning companion answer the latest user question. " +
+      "You turn a spoken conversation into a task draft for Orin, an AI browser agent. " +
       "Transcripts may be incomplete or corrected. Use the latest correction. " +
-      "Continue from completed tool results; do not repeat completed actions. " +
-      "Return verified facts and useful next steps in at most 150 words. " +
-      "To display a study schedule for the current request, call plan_study_schedule with its total minutes and days. " +
-      "Ask for missing details instead of guessing. The tool only calculates a draft plan; " +
-      "it does not save calendar events. You have no other tools.",
+      "Call draft_task with a clear self-contained English prompt containing all details the user gave (sites, names, form values), " +
+      "the best mode (automation for opening sites, clicking, typing, filling forms or ordering; spy for competitor intel; research for deep briefings; search for quick facts), " +
+      "3-6 short plan steps, and needs_approval_reason. " +
+      "If key details are missing, do not call the tool; ask for them in one short sentence. " +
+      "After drafting, reply in at most 40 spoken words: summarize the plan and ask the user to tap Approve on screen to run it. " +
+      "The tool only shows a draft; it never runs, orders or submits anything. You have no other tools.",
     messages,
     tools: {
-      plan_study_schedule: tool({
-        description: "Distribute a total study time evenly across days and return a draft schedule.",
-        inputSchema: studyScheduleInput,
+      draft_task: tool({
+        description: "Show a task draft with planned steps on the user's screen for approval. Does not run it.",
+        inputSchema: taskInput,
         execute: async (args) => {
           signal.throwIfAborted();
           const plan = planStudySchedule(args);
@@ -420,7 +424,7 @@ export function bindLiveConnection(
           }),
         );
       }
-      if (plan) emit({ type: "app.study_schedule.plan", delegation_id: delegationID, plan });
+      if (plan) emit({ type: "app.task.draft", delegation_id: delegationID, draft: plan });
       completedDelegation = pendingDelegations.shift();
     } catch {
       stop();
@@ -630,6 +634,20 @@ export function bindLiveConnection(
       if (event.type === "app.ready") {
         browserReady = true;
         requestGreeting();
+        return;
+      }
+      if (event.type === "app.narrate") {
+        const text = typeof event.text === "string" ? event.text.trim().slice(0, 400) : "";
+        if (text && gateway.readyState === 1) {
+          gateway.send(
+            JSON.stringify({
+              type: "session.commentary.append",
+              event_id: crypto.randomUUID(),
+              delegation_id: null,
+              content: `App update (tell the user briefly): ${text}`,
+            }),
+          );
+        }
         return;
       }
       if (event.type !== "gateway.heartbeat") {

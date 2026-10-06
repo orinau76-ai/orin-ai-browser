@@ -116,7 +116,9 @@ export function useLiveVoice(
     void controller.current?.resumePlayback();
   }, []);
 
-  return { ...call, audioRef, start, stop, setMuted, resumePlayback };
+  const narrate = useCallback((text: string) => controller.current?.narrate(text) ?? false, []);
+
+  return { ...call, audioRef, start, stop, setMuted, resumePlayback, narrate };
 }
 
 type LiveOptions = {
@@ -396,5 +398,11 @@ function createLiveVoice(options: LiveOptions) {
     }
   }
 
-  return { start, stop, setMuted, resumePlayback };
+  function narrate(text: string) {
+    if (state !== "active") return false;
+    send({ type: "app.narrate", text: text.slice(0, 400) });
+    return true;
+  }
+
+  return { start, stop, setMuted, resumePlayback, narrate };
 }

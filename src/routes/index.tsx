@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useLiveVoice } from "@/hooks/use-live-voice";
+import { useVisionCapture } from "@/hooks/use-vision-capture";
+import { VoiceVisionPanel } from "@/components/voice-vision-panel";
 type VoiceDraft = { id: string; prompt: string; mode: string; steps: string[]; needs_approval_reason: string };
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -181,10 +183,43 @@ function Index() {
   const [liveSources, setLiveSources] = useState<Source[]>([]);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [draft, setDraft] = useState<VoiceDraft | null>(null);
+  const vision = useVisionCapture();
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [captions, setCaptions] = useState<{ role: string; text: string }[]>([]);
+  const [visualBusy, setVisualBusy] = useState(false);
+  const [visualAnswer, setVisualAnswer] = useState("");
+  const lastFrame = useRef(0);
   const call = useLiveVoice({
     onEvent(event) {
       if (event.type === "app.task.draft") setDraft(event["draft"] as VoiceDraft);
       if (event.type === "app.delegation.pending") setPhase("Orin is drafting your task…");
+      if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") {
+        const role = event.type === "session.input_transcript.delta" ? "user" : "assistant";
+        const text = typeof event["delta"] === "string" ? event["delta"] : "";
+        if (text) setCaptions((previous) => {
+          const last = previous[previous.length - 1];
+          return last?.role === role ? [...previous.slice(0, -1), { role, text: last.text + text }] : [...previous, { role, text }];
+        });
+        if (role === "user") {
+          setDraft(null);
+          if (Date.now() - lastFrame.current > 5000) {
+            const frame = vision.snapshot();
+            if (frame && call.shareVision(frame)) lastFrame.current = Date.now();
+          }
+        }
+      }
+      if (event.type === "app.vision.done") {
+        setVisualBusy(false);
+        setVisualAnswer(typeof event["text"] === "string" ? event["text"] : "");
+      }
+      if (event.type === "app.request.error") {
+        setVisualBusy(false);
+        setError(event.error?.message ?? "Orin could not finish that request.");
+      }
+      if (event.type === "app.closed" || event.type === "app.stopping") {
+        vision.stop();
+        setVisualBusy(false);
+      }
     },
   });
   const listening = call.status === "connecting" || call.status === "connected";
@@ -385,6 +420,8 @@ function Index() {
       return;
     }
     setDraft(null);
+    setCaptions([]);
+    setVoiceOpen(true);
     call.start();
   }
 
@@ -452,6 +489,23 @@ function Index() {
   }
 
   const active = turns.length > 0 || busy;
+  const voicePanel = <VoiceVisionPanel
+    open={voiceOpen} status={call.status} videoRef={vision.videoRef} source={vision.source}
+    pending={vision.pending} muted={call.muted} playbackBlocked={call.playbackBlocked}
+    visualBusy={visualBusy} visualAnswer={visualAnswer} captions={captions}
+    error={vision.error ?? call.error ?? error} draft={draft} busy={busy} viewerUrl={viewerUrl} phase={phase}
+    onShare={(source) => void vision.start(source)} onStopSharing={vision.stop}
+    onLook={() => {
+      const frame = vision.snapshot();
+      if (frame && call.shareVision(frame, true)) { setVisualBusy(true); setError(null); }
+      else setError("The shared video is not ready yet.");
+    }}
+    onMute={() => call.setMuted(!call.muted)} onMinimize={() => setVoiceOpen(false)}
+    onEnd={() => { vision.stop(); call.stop(); abortRef.current?.abort(); setDraft(null); setVoiceOpen(false); }}
+    onPlay={call.resumePlayback} onApprove={approveDraft}
+    onDecline={() => { setDraft(null); call.narrate("The user declined that task draft."); }}
+    onCancel={() => abortRef.current?.abort()}
+  />;
 
   const modeToggles = (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -480,6 +534,7 @@ function Index() {
         {error ? <p className="mb-2 text-sm text-destructive">{error}</p> : null}
         <div className="mb-2">{modeToggles}</div>
         <audio ref={call.audioRef} className="hidden" />
+        {listening ? <button type="button" onClick={() => setVoiceOpen(true)} className="mb-2 text-xs font-semibold text-primary">Open Orin Live</button> : null}
         {listening || call.error ? (
           <div className="mb-2 flex items-center justify-between gap-2 rounded-2xl bg-white/60 px-4 py-2 text-xs">
             <span className="flex items-center gap-2">
@@ -561,6 +616,7 @@ function Index() {
   if (active) {
     return (
       <div className="flex h-[100dvh] flex-col overflow-hidden">
+        {voicePanel}
         <header className="flex shrink-0 items-center gap-2 border-b border-border bg-background/70 px-3 py-2.5 backdrop-blur-xl sm:px-5">
           <button
             onClick={() => {
@@ -699,6 +755,7 @@ function Index() {
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden p-0 sm:p-6">
+      {voicePanel}
       <div className="glass mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-hidden sm:rounded-3xl">
         <header className="flex items-center gap-2 px-3 py-3 sm:gap-4 sm:px-5">
           <div className="hidden items-center gap-2 sm:flex">

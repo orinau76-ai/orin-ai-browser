@@ -117,8 +117,9 @@ export function useLiveVoice(
   }, []);
 
   const narrate = useCallback((text: string) => controller.current?.narrate(text) ?? false, []);
+  const shareVision = useCallback((image: string, analyze = false) => controller.current?.shareVision(image, analyze) ?? false, []);
 
-  return { ...call, audioRef, start, stop, setMuted, resumePlayback, narrate };
+  return { ...call, audioRef, start, stop, setMuted, resumePlayback, narrate, shareVision };
 }
 
 type LiveOptions = {
@@ -404,5 +405,11 @@ function createLiveVoice(options: LiveOptions) {
     return true;
   }
 
-  return { start, stop, setMuted, resumePlayback, narrate };
+  function shareVision(image: string, analyze: boolean) {
+    if (state !== "active") return false;
+    send({ type: "app.vision", image, analyze });
+    return true;
+  }
+
+  return { start, stop, setMuted, resumePlayback, narrate, shareVision };
 }

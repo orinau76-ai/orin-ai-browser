@@ -9,3 +9,4 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 - Live voice runs through a persistent WebSocket relay at /api/live (src/lib/live-relay.server.ts, dispatched in src/server.ts and live-vite-plugin.ts in dev); the voice agent only drafts tasks, and only the user's Approve tap runs them — keeps consequential actions user-confirmed.
+- Camera/screen capture is browser-owned and permission-based; selected JPEG frames join the voice relay's full backend history, never the audio transport or persistent storage, because Live accepts audio/text rather than images.

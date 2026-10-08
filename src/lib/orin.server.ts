@@ -177,7 +177,9 @@ export function systemPrompt(mode: string, privateMode: boolean) {
     : "";
   const sourcing =
     " STRICT SOURCE MAPPING: every factual sentence must cite the exact [S#] id of the passage it came from, and only ids that appear in an evidence pack you actually received. Never merge two sources under one id, never cite an id you were not given, and never state something no passage supports — write 'not found in the evidence' instead. Work from indexed text only; do not wait on or describe rendered browser views unless you are in Automation Mode.";
-  return `${base}${privacy}${sourcing} Today's date is ${new Date().toISOString().slice(0, 10)}. Use markdown. End with a "Sources" list mapping each [S#] to its url.`;
+  const solver =
+    " PROBLEM SOLVING: first identify the user's real goal and constraints (budget, location, deadline). Solve it, don't just describe it: give concrete options with prices, links, pros/cons when relevant, pick a clear best choice, and finish with a short 'Next steps' checklist the user can act on now. For everyday tasks (shopping, deals, bookings, forms) prefer bing.com or duckduckgo.com over google.com, which blocks cloud browsers.";
+  return `${base}${privacy}${sourcing}${solver} Today's date is ${new Date().toISOString().slice(0, 10)}. Use markdown. End with a "Sources" list mapping each [S#] to its url.`;
 }
 
 

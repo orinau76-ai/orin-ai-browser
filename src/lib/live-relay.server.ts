@@ -479,6 +479,7 @@ export function bindLiveConnection(
         (plan) => {
           pending.plan = plan;
         },
+        () => emit({ type: "app.task.approved", delegation_id: id }),
       );
       if (closing || controller.signal.aborted) return;
       if (taskRevision !== revision) return;

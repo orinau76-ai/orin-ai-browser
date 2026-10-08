@@ -189,9 +189,16 @@ function Index() {
   const [visualBusy, setVisualBusy] = useState(false);
   const [visualAnswer, setVisualAnswer] = useState("");
   const lastFrame = useRef(0);
+  const approveRef = useRef<() => void>(() => {});
+  const startVoiceTaskRef = useRef<(d: VoiceDraft) => void>(() => {});
   const call = useLiveVoice({
     onEvent(event) {
-      if (event.type === "app.task.draft") setDraft(event["draft"] as VoiceDraft);
+      if (event.type === "app.task.draft") {
+        const next = event["draft"] as VoiceDraft & { requires_approval?: boolean };
+        if (next.requires_approval) { setDraft(next); setPhase("Waiting for your approval"); }
+        else { setDraft(null); startVoiceTaskRef.current(next); }
+      }
+      if (event.type === "app.task.approved") approveRef.current();
       if (event.type === "app.delegation.pending") setPhase("Orin is drafting your task…");
       if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") {
         const role = event.type === "session.input_transcript.delta" ? "user" : "assistant";
@@ -201,7 +208,6 @@ function Index() {
           return last?.role === role ? [...previous.slice(0, -1), { role, text: last.text + text }] : [...previous, { role, text }];
         });
         if (role === "user") {
-          setDraft(null);
           if (Date.now() - lastFrame.current > 5000) {
             const frame = vision.snapshot();
             if (frame && call.shareVision(frame)) lastFrame.current = Date.now();
@@ -432,6 +438,11 @@ function Index() {
     call.narrate(`The user approved. Starting the ${d.mode} task now.`);
     void run(d.prompt, d.mode as Mode);
   }
+  approveRef.current = approveDraft;
+  startVoiceTaskRef.current = (d: VoiceDraft) => {
+    if (busy) abortRef.current?.abort();
+    void run(d.prompt, d.mode as Mode);
+  };
 
   async function wipeHistory() {
     if (!confirm("Delete all your Orin history?")) return;
